@@ -126,6 +126,7 @@ const fr = {
       longBlockage: 'Blocage long',
       stagnantReady: 'Prêt qui stagne',
       unusualWip: 'WIP inhabituel',
+      stalledFlow: 'Flux à l’arrêt',
       waitingValidation: 'Validation qui attend',
       sendBackLoop: 'Boucle de Retours',
     },
@@ -138,6 +139,8 @@ const fr = {
     /** `wip` et `threshold` : les nombres écrits ; `n` : le WIP, pour l'accord. */
     unusualWip: (wip: string, threshold: string, n: number) =>
       `${wip} ${n >= 2 ? 'tickets' : 'ticket'} en cours, au-delà de ${threshold}, le P85 du WIP quotidien des 90 derniers jours`,
+    /** `ready` : le nombre écrit, toujours au moins 3 (le seuil du Flux à l'arrêt) : toujours au pluriel. */
+    stalledFlow: (ready: string, duration: string) => `${ready} tickets Prêts, et aucune Transition depuis ${duration}`,
     waitingValidation: (duration: string) => `À valider depuis ${duration}`,
     /** `count` : le nombre écrit, toujours au moins 3 (le seuil de la Boucle de Retours) : toujours au pluriel. */
     sendBackLoop: (count: string) => `${count} Retours au développement, sans être fermé`,
@@ -240,14 +243,14 @@ const fr = {
   /** La page « À regarder » : son titre est le nom de son onglet (`sections.signals`). */
   signalsPage: {
     globalDescription:
-      'Ce qui s’est passé depuis votre dernière visite, puis ce qui mérite d’être regardé maintenant, dans tous les Projets : Dérives, Blocages longs, Prêts qui stagnent, WIP inhabituel, Validations qui attendent, Boucles de Retours.',
+      'Ce qui s’est passé depuis votre dernière visite, puis ce qui mérite d’être regardé maintenant, dans tous les Projets : Dérives, Blocages longs, Prêts qui stagnent, WIP inhabituel, Flux à l’arrêt, Validations qui attendent, Boucles de Retours.',
     /** `project` : le Projet comme une phrase le nomme (`projectInSentence`). */
     projectDescription: (project: string) =>
-      `Ce qui mérite d’être regardé maintenant dans ${project} : Dérives, Blocages longs, Prêts qui stagnent, WIP inhabituel, Validations qui attendent, Boucles de Retours.`,
+      `Ce qui mérite d’être regardé maintenant dans ${project} : Dérives, Blocages longs, Prêts qui stagnent, WIP inhabituel, Flux à l’arrêt, Validations qui attendent, Boucles de Retours.`,
     loadFailed: 'Impossible de lire les Signaux',
     loading: 'Chargement des Signaux',
     nothingTitle: 'Rien à regarder',
-    nothing: 'Aucune Dérive, aucun Blocage long, aucun Prêt qui stagne, aucun WIP inhabituel, aucune Validation qui attend ni aucune Boucle de Retours en ce moment.',
+    nothing: 'Aucune Dérive, aucun Blocage long, aucun Prêt qui stagne, aucun WIP inhabituel, aucun Flux à l’arrêt, aucune Validation qui attend ni aucune Boucle de Retours en ce moment.',
     /** Entre le Projet d'un WIP inhabituel et ce qu'il dit : « bdesk : 7 tickets en cours… ». */
     separator: ' : ',
   },
@@ -413,6 +416,7 @@ const en: typeof fr = {
       longBlockage: 'Long blockage',
       stagnantReady: 'Stale ready',
       unusualWip: 'Unusual WIP',
+      stalledFlow: 'Stalled flow',
       waitingValidation: 'Waiting validation',
       sendBackLoop: 'Send-back loop',
     },
@@ -423,6 +427,7 @@ const en: typeof fr = {
     stagnantReady: (age: string) => `Ready for ${age}`,
     unusualWip: (wip: string, threshold: string, n: number) =>
       `${wip} ${n === 1 ? 'ticket' : 'tickets'} in progress, above ${threshold}, the P85 of daily WIP over the last 90 days`,
+    stalledFlow: (ready: string, duration: string) => `${ready} Ready tickets, and no Transition for ${duration}`,
     waitingValidation: (duration: string) => `Awaiting validation for ${duration}`,
     sendBackLoop: (count: string) => `${count} Send-backs to development, still not closed`,
   },
@@ -503,13 +508,13 @@ const en: typeof fr = {
   },
   signalsPage: {
     globalDescription:
-      'What happened since your last visit, then what deserves a look right now, across all projects: drifts, long blockages, stale ready tickets, unusual WIP, waiting validations, send-back loops.',
+      'What happened since your last visit, then what deserves a look right now, across all projects: drifts, long blockages, stale ready tickets, unusual WIP, stalled flow, waiting validations, send-back loops.',
     projectDescription: (project: string) =>
-      `What deserves a look right now in ${project}: drifts, long blockages, stale ready tickets, unusual WIP, waiting validations, send-back loops.`,
+      `What deserves a look right now in ${project}: drifts, long blockages, stale ready tickets, unusual WIP, stalled flow, waiting validations, send-back loops.`,
     loadFailed: 'Could not read signals',
     loading: 'Loading signals',
     nothingTitle: 'Nothing to watch',
-    nothing: 'No drift, long blockage, stale ready ticket, unusual WIP, waiting validation or send-back loop right now.',
+    nothing: 'No drift, long blockage, stale ready ticket, unusual WIP, stalled flow, waiting validation or send-back loop right now.',
     separator: ': ',
   },
   sinceLastVisit: {

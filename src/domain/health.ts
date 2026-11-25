@@ -12,6 +12,7 @@ import type {
 import { calendarElapsed, resolvePeriod } from './calendar';
 import { lruMemo } from './lru';
 import { reworkIn } from './rework';
+import { stalledTimeIn } from './stalledFlow';
 import { durationStats, type MetricsInput, type MetricsOptions, type TrackedTicket, trend } from './metrics';
 import { MAX_ZONE_FORMATTERS } from './time-zone';
 
@@ -63,7 +64,7 @@ export function computeHealth(projects: MetricsInput[], { period, now, timeZone 
     declines: declinesOf(entries, elapsed, compared),
     leadTimeBreakdown: leadTimeBreakdownOf(entries, elapsed),
     readyAges: readyAgesOf(entries, resolved.asOf, resolved.previousAsOf, timeZone),
-    activity: activityOf(entries, elapsed, timeZone),
+    activity: { ...activityOf(entries, elapsed, timeZone), stalled: stalledOf(projects, elapsed) },
   };
 }
 
@@ -279,7 +280,7 @@ function slotOf(instant: number, timeZone: string): { weekday: number; hour: num
  * Les Transitions de la fenêtre par jour de la semaine et par heure. La création d'un ticket (son premier statut) n'est pas
  * une Transition : c'est une Arrivée.
  */
-function activityOf(entries: Entry[], window: Window, timeZone: string): MetricsActivity {
+function activityOf(entries: Entry[], window: Window, timeZone: string): Omit<MetricsActivity, 'stalled'> {
   const cells = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
   let total = 0;
   for (const { ticket } of entries) {
@@ -292,4 +293,16 @@ function activityOf(entries: Entry[], window: Window, timeZone: string): Metrics
     }
   }
   return { cells, total };
+}
+
+/** Les Heures à l'arrêt de la fenêtre, sommées sur les Projets, et leurs Prêts en moyenne, pesée par le temps (`stalledTimeIn`). */
+function stalledOf(projects: MetricsInput[], window: Window): MetricsActivity['stalled'] {
+  let duration = 0;
+  let readyTime = 0;
+  for (const project of projects) {
+    const stalled = stalledTimeIn(project.analysis, window.start, window.end);
+    duration += stalled.duration;
+    readyTime += stalled.readyTime;
+  }
+  return { duration, ready: duration > 0 ? readyTime / duration : null };
 }

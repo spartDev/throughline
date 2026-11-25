@@ -385,6 +385,18 @@ describe('API des Signaux', () => {
     ]);
   });
 
+  it('sert le Flux à l’arrêt, daté de la dernière Transition en ISO, avec le nombre de Prêts', async () => {
+    const stalled: TicketHistory[] = [
+      ...['r1', 'r2', 'r3'].map((id): TicketHistory => ({ id, type: 'task', statusSnapshots: snapshots(['open', 2]), dependencies: [] })),
+      { id: 'm', type: 'task', statusSnapshots: snapshots(['open', 3], ['in_progress', 1]), dependencies: [] },
+    ];
+    const stalledIssues = stalled.map((h): Issue => ({ ...issue, id: h.id, title: `Titre de ${h.id}`, type: 'task', priority: 2 }));
+    const res = await getSignals(serviceWith({ histories: async () => stalled, issues: async () => stalledIssues }));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().signals).toEqual([{ kind: 'stalledFlow', project: 'beads-desktop', ready: 3, since: ago(1).toISOString(), duration: DAY }]);
+  });
+
   it('liste un Projet illisible dans la réponse, sans faire échouer le reste', async () => {
     const res = await getSignals(
       serviceWith({

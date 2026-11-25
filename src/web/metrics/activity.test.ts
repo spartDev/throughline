@@ -15,7 +15,7 @@ const zeros = () => Array.from({ length: 7 }, () => new Array<number>(24).fill(0
 function activityOf(entries: [weekday: number, hour: number, count: number][]): MetricsActivity {
   const cells = zeros();
   for (const [weekday, hour, count] of entries) cells[weekday]![hour] = count;
-  return { cells, total: entries.reduce((sum, [, , count]) => sum + count, 0) };
+  return { cells, total: entries.reduce((sum, [, , count]) => sum + count, 0), stalled: { duration: 0, ready: null } };
 }
 
 describe('weekdaysIn', () => {

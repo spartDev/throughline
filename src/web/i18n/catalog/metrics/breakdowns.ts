@@ -88,6 +88,10 @@ const fr = {
     /** `slot` : « jeudi, de 14 h à 15 h ». */
     peak: (slot: string, count: string) => ` Pic : ${slot} (${count}).`,
     rawCounts: ' Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période.',
+    /** Les Heures à l'arrêt de la période : `hours` le nombre d'heures écrit, `ready` le nombre moyen de Prêts écrit. */
+    stalled: (hours: string, ready: string) =>
+      ` Heures à l’arrêt : ${hours}${NBSP}h, avec ${ready} Prêts en moyenne, sans aucune Transition depuis plus de 12 heures.`,
+    noStalled: ' Aucune Heure à l’arrêt : jamais 3 Prêts sans Transition depuis plus de 12 heures.',
     legend: 'Légende de la carte d’activité',
     less: 'Moins',
     more: 'Plus',
@@ -198,6 +202,8 @@ const en: typeof fr = {
     description: (transitions, timeZone) => `${transitions} by day of the week and hour, in the ${timeZone} time zone.`,
     peak: (slot, count) => ` Peak: ${slot} (${count}).`,
     rawCounts: ' Raw counts, not adjusted for how many times each day of the week occurs in the period.',
+    stalled: (hours, ready) => ` Stalled hours: ${hours}${NBSP}h, with ${ready} Ready tickets on average and no Transition for more than 12 hours.`,
+    noStalled: ' No stalled hours: never 3 Ready tickets without a Transition for more than 12 hours.',
     legend: 'Activity map legend',
     less: 'Less',
     more: 'More',

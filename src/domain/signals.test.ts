@@ -389,3 +389,78 @@ describe('signalsOf : ordre des nouveaux Signaux', () => {
     expect(order).toEqual(['longBlockage:k', 'unusualWip', 'waitingValidation:vb', 'waitingValidation:va', 'sendBackLoop:l4', 'sendBackLoop:l3']);
   });
 });
+
+describe('signalsOf : Flux à l’arrêt', () => {
+  /** Un Prêt créé il y a `days` jours, jamais démarré. */
+  const readySince = (id: string, days: number) => ticket(id, [['open', ago(days)]]);
+  /** Un ticket créé une heure avant sa seule Transition, un démarrage, `ms` avant NOW. */
+  const movedAgo = (id: string, ms: number) =>
+    ticket(id, [
+      ['open', NOW - ms - HOUR],
+      ['in_progress', NOW - ms],
+    ]);
+  const readies = (n: number) => Array.from({ length: n }, (_, i) => readySince(`r${i}`, 2));
+  const onlyStalled = (signals: ReturnType<typeof signalsAt>) => signals.filter((signal) => signal.kind === 'stalledFlow');
+
+  it('au moins 3 Prêts et aucune Transition depuis plus de 12 heures : le Flux est à l’arrêt, daté de la dernière Transition', () => {
+    expect(onlyStalled(signalsAt([...readies(3), movedAgo('m', 13 * HOUR)]))).toEqual([
+      { kind: 'stalledFlow', project: 'p', ready: 3, since: NOW - 13 * HOUR, duration: 13 * HOUR },
+    ]);
+  });
+
+  it('2 Prêts ne suffisent pas', () => {
+    expect(onlyStalled(signalsAt([...readies(2), movedAgo('m', 13 * HOUR)]))).toEqual([]);
+  });
+
+  it('12 heures pile ne font pas un Flux à l’arrêt', () => {
+    const tickets = [...readies(3), movedAgo('m', 12 * HOUR)];
+
+    expect(onlyStalled(signalsAt(tickets))).toEqual([]);
+    expect(onlyStalled(signalsAt(tickets, NOW + 1))).toHaveLength(1);
+  });
+
+  it('une Transition récente, sur n’importe quel ticket, remet le compte à zéro', () => {
+    expect(onlyStalled(signalsAt([...readies(3), movedAgo('m', 13 * HOUR), movedAgo('n', HOUR)]))).toEqual([]);
+  });
+
+  it('la création d’un ticket n’est pas une Transition : des Prêts créés il y a une heure ne font pas avancer le flux, ils comptent', () => {
+    const fresh = Array.from({ length: 3 }, (_, i) => ticket(`f${i}`, [['open', NOW - HOUR]]));
+
+    expect(onlyStalled(signalsAt([...fresh, movedAgo('m', 13 * HOUR)]))).toMatchObject([{ ready: 3, since: NOW - 13 * HOUR }]);
+  });
+
+  it('un Projet sans aucune Transition n’a pas de Flux à l’arrêt : il n’a jamais été en marche', () => {
+    expect(onlyStalled(signalsAt(readies(5)))).toEqual([]);
+  });
+
+  it('un Projet dont la dernière Transition a plus de 7 jours dort : pas de Signal ; 7 jours pile, il vit encore', () => {
+    expect(onlyStalled(signalsAt([...readies(3), movedAgo('m', 7 * DAY + 1)]))).toEqual([]);
+    expect(onlyStalled(signalsAt([...readies(3), movedAgo('m', 7 * DAY)]))).toHaveLength(1);
+  });
+
+  it('un ticket en Blocage ou en cours n’est pas un Prêt', () => {
+    const blocker = readySince('x', 2);
+    const waiting = ticket('w', [['open', ago(2)]], { dependencies: [{ type: 'blocks', target: 'x', addedAt: new Date(ago(2)) }] });
+
+    expect(onlyStalled(signalsAt([blocker, waiting, readySince('r', 2), movedAgo('m', 13 * HOUR)]))).toEqual([]);
+  });
+
+  it('se range après le WIP inhabituel et avant les Validations qui attendent, le plus long d’abord', () => {
+    const both = signalsOf(
+      [
+        { id: 'court', name: 'court', analysis: analyzeProject([...readies(3), movedAgo('m', 13 * HOUR)], NO_DECLARED_STATUSES) },
+        { id: 'long', name: 'long', analysis: analyzeProject([...readies(3), movedAgo('m', 40 * HOUR)], NO_DECLARED_STATUSES) },
+      ],
+      { now: NOW, timeZone: PARIS },
+    );
+
+    const waiting = ticket('v', [
+      ['in_progress', ago(3)],
+      ['awaiting_human', ago(2)],
+    ]);
+    const withValidation = signalsAt([...readies(3), movedAgo('m', 13 * HOUR), waiting]);
+
+    expect(withValidation.map(({ kind }) => kind)).toEqual(['stalledFlow', 'waitingValidation']);
+    expect(onlyStalled(both).map(({ project }) => project)).toEqual(['long', 'court']);
+  });
+});
