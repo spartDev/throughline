@@ -5,6 +5,8 @@ import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import { type Signal, signalsOf } from '../../domain/signals';
 import type { ApiSignal, MetricsResponse, SignalsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
+import type { ProjectReasonDetail } from '../../shared/errors';
+import { projectReason } from '../../shared/project-reasons';
 import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
 import { createHeadReader } from '../projects/head-reader';
@@ -167,7 +169,7 @@ export function createMetricsService(
     const measured: MetricsInput[] = [];
     await Promise.all(
       selected.map(async (project) => {
-        if (project.status !== 'ok') return void unreadable.push(unreadableProject(project, project.reason));
+        if (project.status !== 'ok') return void unreadable.push(unreadableProject(project, project));
         try {
           measured.push({ id: project.id, name: project.name, analysis: await analysisOf(project.id, signal) });
         } catch (err) {
@@ -175,7 +177,7 @@ export function createMetricsService(
           // supprimé, déplacé, masqué). Ce n'est pas un identifiant inconnu (404), mais un Projet qu'on ne peut plus lire.
           if (err instanceof ProjectNotFoundError) return void unreadable.push(unreadableProject(project, VANISHED));
           if (!(err instanceof ProjectUnreadableError)) throw err;
-          unreadable.push(unreadableProject(project, err.reason));
+          unreadable.push(unreadableProject(project, err));
         }
       }),
     );
@@ -227,15 +229,15 @@ export function createMetricsService(
   };
 }
 
-const VANISHED = 'Projet disparu pendant le calcul (dossier supprimé, déplacé ou masqué).';
+const VANISHED = projectReason({ code: 'project-vanished', params: {} });
 
 const position = (known: Project[], id: string) => known.findIndex((project) => project.id === id);
 
-const unreadableProject = (project: Project, reason: string | undefined): MetricsUnreadableProject => ({
-  id: project.id,
-  name: project.name,
-  reason: reason ?? 'Projet illisible.',
-});
+/** Un Projet qu'on n'a pas pu lire, avec sa raison et sa cause codée quand elle l'est ; « Projet illisible. » sans raison. */
+const unreadableProject = (project: Project, { reason, reasonDetail }: { reason?: string; reasonDetail?: ProjectReasonDetail }): MetricsUnreadableProject => {
+  if (reason === undefined) return { id: project.id, name: project.name, ...projectReason({ code: 'unreadable', params: {} }) };
+  return reasonDetail === undefined ? { id: project.id, name: project.name, reason } : { id: project.id, name: project.name, reason, reasonDetail };
+};
 
 /** Le fuseau local d'après le moteur. Typé `string`, il vaut `undefined` quand le moteur ne sait pas le nommer : d'où le type ici. */
 const localTimeZone = (): string | undefined => Intl.DateTimeFormat().resolvedOptions().timeZone;

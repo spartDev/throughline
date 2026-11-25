@@ -72,7 +72,7 @@ export async function readIssuePrefix(db: DoltDatabase): Promise<string | null> 
 export async function readHead(db: DoltDatabase): Promise<string> {
   const rows = await db.query("select hashof('HEAD') as head", { lane: 'light' });
   const head = asText(rows[0]?.head);
-  if (!head) throw new DoltQueryError(`HEAD illisible dans ${db.dir}`, db.dir);
+  if (!head) throw new DoltQueryError({ code: 'head-unreadable', params: { path: db.dir } }, db.dir);
   return head;
 }
 

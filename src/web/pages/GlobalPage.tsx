@@ -1,8 +1,9 @@
 import { ChevronRight, FolderSearch, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router';
+import { projectReasonText } from '../data/apiError';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
-import { useFormat, useT } from '../i18n';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useRetryFocus } from '../lib/useRetryFocus';
@@ -15,6 +16,7 @@ import { Page, SectionTitle } from './Page';
 export function GlobalPage() {
   const t = useT();
   const format = useFormat();
+  const { language } = useLanguage();
   const text = t.shell.overview;
   useDocumentTitle(text.title);
   const projects = useProjects();
@@ -76,7 +78,7 @@ export function GlobalPage() {
             {projects.data.ignored.map((folder) => (
               <li key={folder.path} className="flex flex-col gap-0.5 px-4 py-2.5 wrap-anywhere">
                 <span className="break-all font-mono text-xs text-ink">{folder.path}</span>
-                <span className="text-ink-3">{folder.reason}</span>
+                <span className="text-ink-3">{projectReasonText(folder, language)}</span>
               </li>
             ))}
           </ul>
@@ -88,6 +90,7 @@ export function GlobalPage() {
 
 function ProjectRow({ project }: { project: Project }) {
   const t = useT();
+  const { language } = useLanguage();
   const readable = project.status === 'ok';
   const body = (
     <>
@@ -104,7 +107,7 @@ function ProjectRow({ project }: { project: Project }) {
             <TriangleAlert size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
             <span>
               <span className="sr-only">{t.shell.common.unreadableBecause}</span>
-              {project.reason ?? t.shell.common.unreadable}
+              {projectReasonText(project, language) ?? t.shell.common.unreadable}
             </span>
           </span>
         )}

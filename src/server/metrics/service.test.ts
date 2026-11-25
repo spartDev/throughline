@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../../domain/calendar';
 import type { StatusSnapshot, TicketHistory } from '../../domain/flow';
 import type { Issue, Project } from '../../shared/api';
+import type { ProjectReasonDetail } from '../../shared/errors';
 import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS } from '../flight';
 import { ProjectNotFoundError, type ProjectService, ProjectUnreadableError, type ReadOptions } from '../projects/service';
@@ -38,6 +39,8 @@ interface FakeProject {
   name?: string;
   status?: 'ok' | 'unreadable';
   reason?: string;
+  /** La cause codée de la raison (bdesk-ewr.8), que la liste et le refus de lecture portent à côté d'elle. */
+  reasonDetail?: ProjectReasonDetail;
   head?: string;
   histories?: TicketHistory[];
   issues?: Issue[];
@@ -55,7 +58,7 @@ function fakeProjects(world: Record<string, FakeProject>) {
   const find = (id: string): FakeProject => {
     const project = world[id];
     if (!project) throw new ProjectNotFoundError(id);
-    if (project.status === 'unreadable') throw new ProjectUnreadableError(id, project.reason ?? 'illisible');
+    if (project.status === 'unreadable') throw new ProjectUnreadableError(id, project.reason ?? 'illisible', project.reasonDetail);
     return project;
   };
   const service: ProjectService = {
@@ -63,7 +66,8 @@ function fakeProjects(world: Record<string, FakeProject>) {
       calls.list++;
       const projects = Object.entries(world).map(([id, p]): Project => {
         const base: Project = { id, name: p.name ?? `Nom de ${id}`, path: `/p/${id}`, prefix: id, mode: 'embedded', status: p.status ?? 'ok' };
-        return p.status === 'unreadable' ? { ...base, reason: p.reason ?? 'illisible' } : base;
+        if (p.status !== 'unreadable') return base;
+        return p.reasonDetail === undefined ? { ...base, reason: p.reason ?? 'illisible' } : { ...base, reason: p.reason ?? 'illisible', reasonDetail: p.reasonDetail };
       });
       return { projects, ignored: [] };
     },
@@ -244,6 +248,25 @@ describe('service de métriques', () => {
       expect(response.tiles.throughput.total).toBe(3);
     });
 
+    // bdesk-ewr.8 : la cause codée suit la raison, que le Projet soit illisible au scan ou le devienne pendant le calcul.
+    it('porte la cause codée d’un Projet illisible au scan', async () => {
+      const reasonDetail: ProjectReasonDetail = { code: 'database-not-local', params: { folder: '.beads/dolt', path: '.beads/dolt/b' } };
+      const { service } = fakeProjects({ ...twoProjects(), hcp: { status: 'unreadable', reason: 'Base Dolt absente de ce poste', reasonDetail, name: 'HCP' } });
+
+      const response = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+      expect(response.unreadable).toEqual([{ id: 'hcp', name: 'HCP', reason: 'Base Dolt absente de ce poste', reasonDetail }]);
+    });
+
+    it('porte la cause codée d’un Projet devenu illisible pendant le calcul', async () => {
+      const reasonDetail: ProjectReasonDetail = { code: 'dolt-locked', params: {} };
+      const { service } = fakeProjects({ ...twoProjects(), verrou: { name: 'Verrou', failure: new ProjectUnreadableError('verrou', 'base verrouillée', reasonDetail) } });
+
+      const response = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+      expect(response.unreadable).toEqual([{ id: 'verrou', name: 'Verrou', reason: 'base verrouillée', reasonDetail }]);
+    });
+
     it('rend une réponse vide mais valide quand le seul Projet demandé est illisible', async () => {
       const { service } = fakeProjects({ hcp: { status: 'unreadable', reason: 'Base absente', name: 'HCP' } });
 
@@ -277,7 +300,14 @@ describe('service de métriques', () => {
         const response = await createMetricsService(vanishingAfterList(world, 'b'), options).compute({ projects: [], ...week });
 
         expect(response.projects.map((p) => p.id)).toEqual(['a']);
-        expect(response.unreadable).toEqual([{ id: 'b', name: 'Nom de b', reason: expect.stringContaining('disparu') }]);
+        expect(response.unreadable).toEqual([
+          {
+            id: 'b',
+            name: 'Nom de b',
+            reason: 'Projet disparu pendant le calcul (dossier supprimé, déplacé ou masqué).',
+            reasonDetail: { code: 'project-vanished', params: {} },
+          },
+        ]);
         expect(response.tiles.throughput.total).toBe(2); // les deux Livraisons de a
       });
 

@@ -41,7 +41,7 @@ describe('the shared helpers of the shell zone, in English', () => {
       detail: 'Check that the beads-desktop command is still running, then try again.',
     });
     expect(describeError(new ApiError('verrou', 503, { reason: 'database is locked' }), 'en')).toEqual({
-      title: 'Unreadable project',
+      title: 'Unreadable Project',
       detail: 'database is locked',
       specific: true,
     });

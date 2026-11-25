@@ -1,6 +1,8 @@
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import type { IgnoredFolder, Project, ProjectMode } from '../../shared/api';
+import type { ProjectReasonDetail } from '../../shared/errors';
+import { projectReason } from '../../shared/project-reasons';
 import type { Config } from '../config';
 import type { DoltClient } from '../dolt/client';
 import { readIssuePrefix } from '../dolt/reader';
@@ -62,7 +64,7 @@ export async function discoverProjects(config: Config, { dolt = createCheckedDol
     const real = await canonicalPath(path);
     if (hidden.has(path) || hidden.has(real)) continue;
     if (!(await isDirectory(join(path, '.beads')))) {
-      ignored.push({ path, reason: 'Aucun dossier .beads dans ce dossier ajouté à la main.' });
+      ignored.push({ path, ...projectReason({ code: 'no-beads-folder', params: {} }) });
       continue;
     }
     byRealPath.set(real, [...(byRealPath.get(real) ?? []), path]);
@@ -76,7 +78,7 @@ export async function discoverProjects(config: Config, { dolt = createCheckedDol
 
   const projects: Omit<DiscoveredProject, 'id'>[] = [];
   for (const { path, workspace } of workspaces) {
-    if (workspace.kind === 'ignored') ignored.push({ path, reason: workspace.reason });
+    if (workspace.kind === 'ignored') ignored.push({ path, ...projectReason(workspace.reason) });
     else projects.push({ ...workspace.project, name: basename(path), path });
   }
   projects.sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || a.path.localeCompare(b.path));
@@ -88,7 +90,7 @@ export async function discoverProjects(config: Config, { dolt = createCheckedDol
 }
 
 type Workspace =
-  | { kind: 'ignored'; reason: string }
+  | { kind: 'ignored'; reason: ProjectReasonDetail }
   | { kind: 'dolt'; project: Omit<DiscoveredProject, 'id' | 'name' | 'path'> };
 
 /** Lit `.beads/` d'un dossier : Projet Dolt (lisible ou non) ou workspace ignoré. `lastRead` : ce que le scan précédent a lu, par dossier de base. */
@@ -96,14 +98,15 @@ async function inspectWorkspace(path: string, dolt: DoltClient, lastRead: Readon
   const beads = join(path, '.beads');
   const metadata = await readJson(join(beads, 'metadata.json'));
   if (metadata === undefined) {
-    return { kind: 'ignored', reason: 'Pas de metadata.json dans .beads : workspace beads incomplet, sans base Dolt.' };
+    return { kind: 'ignored', reason: { code: 'no-metadata', params: {} } };
   }
-  if (metadata === null) return { kind: 'ignored', reason: 'metadata.json illisible (JSON invalide).' };
+  if (metadata === null) return { kind: 'ignored', reason: { code: 'invalid-metadata', params: {} } };
 
   const database = str(metadata.database);
   if (metadata.backend !== 'dolt' && database !== 'dolt') {
-    const kind = database.endsWith('.db') || metadata.backend === 'sqlite' ? `SQLite (${database || 'sqlite'})` : `« ${str(metadata.backend) || database || 'inconnu'} »`;
-    return { kind: 'ignored', reason: `Workspace ${kind} : seuls les Projets Dolt sont suivis.` };
+    if (database.endsWith('.db') || metadata.backend === 'sqlite') return { kind: 'ignored', reason: { code: 'sqlite-workspace', params: { database: database || 'sqlite' } } };
+    const backend = str(metadata.backend) || database;
+    return { kind: 'ignored', reason: backend ? { code: 'other-workspace', params: { backend } } : { code: 'unknown-workspace', params: {} } };
   }
 
   const databaseName = str(metadata.dolt_database);
@@ -111,24 +114,22 @@ async function inspectWorkspace(path: string, dolt: DoltClient, lastRead: Readon
   const mode: ProjectMode = declaredMode === 'embedded' || (declaredMode === '' && (await isDirectory(join(beads, 'embeddeddolt')))) ? 'embedded' : 'server';
   const fallbackPrefix = (await readConfigPrefix(join(beads, 'config.yaml'))) ?? databaseName;
 
-  const unreadable = (reason: string, databasePath?: string): Workspace => ({
+  /** Un Projet illisible : la raison française et sa cause codée (`projectReason`), ou, pour une erreur que le client Dolt n'a pas codée, son message seul. */
+  const unreadable = (reason: ProjectReasonDetail | { reason: string; reasonDetail?: ProjectReasonDetail }, databasePath?: string): Workspace => ({
     kind: 'dolt',
-    project: { prefix: fallbackPrefix, mode, status: 'unreadable', reason, databasePath },
+    project: { prefix: fallbackPrefix, mode, status: 'unreadable', ...('code' in reason ? projectReason(reason) : reason), databasePath },
   });
 
   if (declaredMode !== '' && declaredMode !== 'embedded' && declaredMode !== 'server') {
-    return unreadable(`Mode Dolt « ${declaredMode} » non pris en charge (embedded et server seulement).`);
+    return unreadable({ code: 'unsupported-mode', params: { mode: declaredMode } });
   }
 
   const folder = mode === 'embedded' ? 'embeddeddolt' : 'dolt';
   const databasePath = await locateDatabase(join(beads, folder), databaseName);
   if (!databasePath) {
-    const where = join('.beads', folder, databaseName || '<base>');
-    return unreadable(
-      mode === 'server'
-        ? `Base Dolt absente de ce poste (${where} introuvable) : le Projet est en mode server, sa base n'est pas disponible localement.`
-        : `Base Dolt introuvable (${where}).`,
-    );
+    // Le chemin s'écrit ici, par `join`, comme la raison l'a toujours écrit : il normalise un nom inhabituel (`../autre`, `a//b/`, `/etc`).
+    const where = { folder: join('.beads', folder), path: databaseName ? join('.beads', folder, databaseName) : '' };
+    return unreadable({ code: mode === 'server' ? 'database-not-local' : 'database-not-found', params: where });
   }
 
   // L'empreinte est prise avant la lecture, jamais après : une écriture qui tombe entre les deux la change sans que le préfixe lu la voie.
@@ -142,7 +143,7 @@ async function inspectWorkspace(path: string, dolt: DoltClient, lastRead: Readon
       project: { prefix: prefix ?? fallbackPrefix, mode, status: 'ok', databasePath, ...(fingerprint === undefined ? {} : { prefixRead: { fingerprint, prefix } }) },
     };
   } catch (err) {
-    return unreadable((err as Error).message, databasePath);
+    return unreadable(reasonOf(err), databasePath);
   }
 }
 
@@ -246,3 +247,10 @@ async function readConfigPrefix(path: string): Promise<string | undefined> {
 }
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/** La raison d'une erreur de lecture : son message, et sa cause codée quand le client Dolt l'a codée (`DoltQueryError.reasonDetail`). */
+export function reasonOf(err: unknown): { reason: string; reasonDetail?: ProjectReasonDetail } {
+  const reason = (err as Error).message;
+  const detail = (err as { reasonDetail?: ProjectReasonDetail }).reasonDetail;
+  return detail === undefined ? { reason } : { reason, reasonDetail: detail };
+}

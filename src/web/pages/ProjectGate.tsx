@@ -1,9 +1,10 @@
 import { FolderSearch, TriangleAlert } from 'lucide-react';
 import { useEffect } from 'react';
 import { Link, Outlet, useOutletContext, useParams } from 'react-router';
+import { projectReasonText } from '../data/apiError';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
-import { useT } from '../i18n';
+import { useLanguage, useT } from '../i18n';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
@@ -29,6 +30,7 @@ export function ProjectGate() {
   const projects = useProjects();
   const retry = useRetryFocus(projects);
   const text = useT().shell.projectGate;
+  const { language } = useLanguage();
   const project = projects.data?.projects.find((candidate) => candidate.id === projectId);
   // Seuls les états d'erreur titrent la page : sur un Projet lisible, c'est la page enfant qui le fait.
   useDocumentTitle(project?.status === 'ok' ? undefined : (project?.name ?? projectId));
@@ -80,7 +82,7 @@ export function ProjectGate() {
     return (
       <Page title={project.name}>
         <Notice icon={TriangleAlert} tone="danger" title={text.unreadable}>
-          <p>{project.reason ?? text.unreadableDetail}</p>
+          <p>{projectReasonText(project, language) ?? text.unreadableDetail}</p>
           <p className="mt-1.5 break-all font-mono text-xs text-ink-3">{project.path}</p>
         </Notice>
       </Page>

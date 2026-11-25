@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
+import type { StoredSqlObject } from '../../shared/errors';
+import { projectReasonFr, storedSqlObjectFr } from '../../shared/project-reasons';
 import { isAbortError } from '../abort';
 import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
 import { tableReads } from '../testing/reads-at-head';
@@ -251,15 +253,18 @@ describe('storedSqlInSource', () => {
   });
 
   it('dit une colonne générée, virtuelle ou stockée, et une vue, en nommant la source (l’époque par son commit)', () => {
-    const problems = storedSqlInSource(
+    const found = storedSqlInSource(
       [
         { Field: 'type', Extra: 'VIRTUAL GENERATED' },
         { Field: 'note', Extra: 'STORED GENERATED' },
       ],
       tables('p/abc', ['dolt_history_dependencies', 'VIEW'], ['Dependencies', 'VIEW'], ['blocked_issues', 'VIEW']),
-      'époque du commit abc12345',
+      { in: 'era', commit: 'abc12345' },
     );
+    const problems = found.map(storedSqlObjectFr);
 
+    expect(found).toContainEqual({ kind: 'history-generated-column', column: 'type', place: { in: 'era', commit: 'abc12345' } });
+    expect(found).toContainEqual({ kind: 'view', name: 'Dependencies', place: { in: 'era', commit: 'abc12345' } });
     expect(problems).toHaveLength(4);
     expect(problems.join(' | ')).toContain("colonne générée « type » de l'historique des dépendances (époque du commit abc12345)");
     expect(problems.join(' | ')).toContain('colonne générée « note »');
@@ -285,7 +290,8 @@ describe('storedSqlInSource', () => {
     const problems = storedSqlInSource([], tables('p/abc', [name, 'VIEW']));
 
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain('est une vue');
+    expect(problems[0]).toMatchObject({ kind: 'view', place: { in: 'dependencies-history' } });
+    expect(storedSqlObjectFr(problems[0] as StoredSqlObject)).toContain('est une vue');
   });
 
   it('ne refuse pas une table, quel que soit son nom, mais refuse tout ce qui n’est pas une table de base sous un nom qui n’est pas de bd', () => {
@@ -633,7 +639,7 @@ describe('withStoredSqlCheck', () => {
 
     it('borne aussi la raison d’une ancre d’époque qui porte des centaines de vues (history.ts les refuse toutes, sauf les deux de bd)', () => {
       const views = Array.from({ length: 300 }, (_, i) => ({ Table_type: 'VIEW', Tables_in_base: `vue_${i}` }));
-      const problems = storedSqlInSource([], views, 'époque du commit abc12345');
+      const problems = storedSqlInSource([], views, { in: 'era', commit: 'abc12345' });
 
       expect(problems).toHaveLength(300);
       const message = new StoredSqlError(problems, '/projet').message;
@@ -644,10 +650,23 @@ describe('withStoredSqlCheck', () => {
       expect(message.length).toBeLessThan(900);
     });
 
-    it('garde la liste entière sur l’erreur, pour qui la lit', () => {
-      const objects = Array.from({ length: 12 }, (_, i) => `objet ${i}`);
+    it('garde la liste entière sur l’erreur, pour qui la lit : les objets (`found`) et leurs phrases (`objects`)', () => {
+      const found = Array.from({ length: 12 }, (_, i): StoredSqlObject => ({ kind: 'view', name: `objet_${i}`, place: { in: 'working' } }));
+      const error = new StoredSqlError(found);
 
-      expect(new StoredSqlError(objects).objects).toEqual(objects);
+      expect(error.found).toEqual(found);
+      expect(error.objects).toEqual(found.map(storedSqlObjectFr));
+    });
+
+    it('porte la cause codée à côté de la raison : les cinq premiers objets et le compte des autres, d’où la même phrase', () => {
+      const found = Array.from({ length: 7 }, (_, i): StoredSqlObject => ({ kind: 'generated-column', table: 'issues', column: `c_${i}`, place: { in: 'head' } }));
+      const error = new StoredSqlError(found, '/projet');
+
+      expect(error.reasonDetail).toEqual({ code: 'stored-sql', params: { objects: found.slice(0, 5), others: 2 } });
+      expect(error.message).toBe(projectReasonFr({ code: 'stored-sql', params: { objects: found.slice(0, 5), others: 2 } }));
+      expect(error.message).toBe(
+        "SQL stocké dans la base, que Dolt exécuterait à la lecture : colonne générée « c_0 » de « issues » (dans HEAD) ; colonne générée « c_1 » de « issues » (dans HEAD) ; colonne générée « c_2 » de « issues » (dans HEAD) ; colonne générée « c_3 » de « issues » (dans HEAD) ; colonne générée « c_4 » de « issues » (dans HEAD) ; et 2 autres. La base n'est pas lue.",
+      );
     });
   });
 
@@ -859,6 +878,7 @@ describe('withStoredSqlCheck', () => {
     expect(error).toBeInstanceOf(DoltQueryError);
     expect(error).not.toBeInstanceOf(StoredSqlError);
     expect((error as Error).message).toBe("La base change plus vite que la vérification du SQL qu'elle porte (3 essais) : réessayez dans un instant.");
+    expect((error as DoltQueryError).reasonDetail).toEqual({ code: 'check-outpaced', params: { attempts: 3 } });
     expect(calls.filter((call) => isRead(call.sqls))).toHaveLength(3);
     expect(calls.some((call) => call.sqls[0] === Q)).toBe(false);
   });
@@ -1082,6 +1102,7 @@ describe('withStoredSqlCheck', () => {
       expect(error).not.toBeInstanceOf(StoredSqlError);
       expect(error.message).toMatch(/^La vérification du SQL stocké n'a pas pu s'achever : Dolt a refusé l'une de ses propres requêtes/);
       expect(error.message).toMatch(/message n'est pas repris/);
+      expect((error as DoltQueryError).reasonDetail).toEqual({ code: 'check-refused', params: {} });
       noSecret(error.message);
     });
 
@@ -1200,6 +1221,7 @@ describe('withStoredSqlCheck', () => {
 
       expect(error).toBeInstanceOf(DoltQueryError);
       expect(error.message).toBe(READ_FIXED);
+      expect((error as DoltQueryError).reasonDetail).toEqual({ code: 'read-refused', params: {} });
       noSecret(error.message);
       expect(error.message).not.toMatch(/4407630|base64|\[83 69|illegal|Invalid|unable to parse/);
     });
@@ -1212,6 +1234,9 @@ describe('withStoredSqlCheck', () => {
       expect(column.message).toBe("Dolt ne trouve pas la colonne « title » que l'app lit.");
       expect(table.message).toBe("Dolt ne trouve pas la table « issues » que l'app lit.");
       expect(qualified.message).toBe("Dolt ne trouve pas la table « dolt_history_issues » que l'app lit.");
+      // bdesk-ewr.8 : la cause codée, d'où l'interface écrit la même raison dans sa langue.
+      expect((column as DoltQueryError).reasonDetail).toEqual({ code: 'missing-column', params: { name: 'title' } });
+      expect((table as DoltQueryError).reasonDetail).toEqual({ code: 'missing-table', params: { name: 'issues' } });
     });
 
     it('ne dit jamais un nom que la requête n’écrit pas : un contenu qui se fait passer pour un nom de table ou de colonne reste sous le message fixe', async () => {
@@ -1281,6 +1306,7 @@ describe('withStoredSqlCheck', () => {
 
         expect(error).toBeInstanceOf(DoltQueryError);
         expect(error.message).toBe(OTHER);
+        expect(error.reasonDetail).toEqual({ code: 'dolt-failed', params: {} });
         expect(error.message).not.toContain(text.slice(0, 12));
       });
 
@@ -1288,6 +1314,7 @@ describe('withStoredSqlCheck', () => {
         const error = await head(client(`echo 'database "beads" is locked by another dolt process; either clone the database to run a second server' >&2; exit 1`).open(tmpdir()));
 
         expect(error.message).toBe(LOCKED);
+        expect(error.reasonDetail).toEqual({ code: 'dolt-locked', params: {} });
         expect(error.locked).toBe(true);
         expect(error.message).not.toMatch(/beads|clone/);
       });
@@ -1296,6 +1323,7 @@ describe('withStoredSqlCheck', () => {
         const error = await head(client(`echo 'fslock new /home/quelquun/projet/.dolt/noms/LOCK: open /home/quelquun/projet/.dolt/noms/LOCK: permission denied' >&2; exit 1`).open(tmpdir()));
 
         expect(error.message).toBe(PERMISSION);
+        expect(error.reasonDetail).toEqual({ code: 'dolt-permission-denied', params: {} });
         expect(error.message).not.toMatch(/quelquun|fslock/);
       });
 
@@ -1304,6 +1332,7 @@ describe('withStoredSqlCheck', () => {
 
         expect(error).toBeInstanceOf(DoltQueryError);
         expect(error.message).toBe(UNREADABLE);
+        expect(error.reasonDetail).toEqual({ code: 'dolt-unreadable-output', params: {} });
         expect(error.message).not.toContain(SECRET);
       });
 
@@ -1638,9 +1667,10 @@ describe('withStoredSqlCheck', () => {
         // Le relevé du commit (le compte, puis le `CREATE TABLE` des cinq tables de cette époque : `dependencies` doit y avoir sa ligne, m2).
         const { client, calls } = fakeClient((sqls) => (isRead(sqls) ? [...ok(sqls, [{ c: count }]), schemaRows()] : diagnosisOf(sqls)));
 
-        const problems = await withStoredSqlCheck(client).open('/projet').storedSqlAt?.(COMMIT);
+        const found = await withStoredSqlCheck(client).open('/projet').storedSqlAt?.(COMMIT);
 
-        expect(problems).toEqual(expected.map((text) => expect.stringContaining(text)));
+        expect(found?.map(storedSqlObjectFr)).toEqual(expected.map((text) => expect.stringContaining(text)));
+        if (count === 1) expect(found).toEqual([{ kind: 'nonlocal-rows', place: { in: 'era', commit: 'm1n2o3p4' } }]);
         // La lecture passe par la vérification : les assertions d'abord, puis le relevé du commit, par les mêmes fonctions de table.
         expect(calls[0]?.sqls[0]).toBe(storedViewsAssertion(BASE));
         expect(calls[0]?.sqls[4]).toContain(`dolt_schema_diff('${BASE}', '${COMMIT}')`);
@@ -1935,7 +1965,8 @@ describe('withStoredSqlCheck', () => {
     describe('l’ancre d’une époque : `storedSqlAt` lit aussi le CREATE TABLE de ce commit-là, avant que son nom soit lu', () => {
       const answer = (nonlocal: number, schema: Row[]) =>
         fakeClient((sqls) => (isRead(sqls) ? [[{}], [{}], schemaRows(), schemaRows(), [{ c: nonlocal }], schema] : diagnosisOf(sqls)));
-      const at = (client: DoltClient) => withStoredSqlCheck(client).open('/projet').storedSqlAt?.(COMMIT_FOR_ERA);
+      // Les objets, tels que la raison française les nomme.
+      const at = async (client: DoltClient) => (await withStoredSqlCheck(client).open('/projet').storedSqlAt?.(COMMIT_FOR_ERA))?.map(storedSqlObjectFr);
 
       it('un index fonctionnel dans l’ancre est refusé, en nommant la table et l’époque par son commit', async () => {
         const { client } = answer(0, schemaRows([{ tbl: 'dependencies', stmt: HOSTILE.replace('`issues`', '`dependencies`') }]));

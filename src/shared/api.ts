@@ -2,7 +2,7 @@
  * Contrat de l'API HTTP (`src/server`), partagé avec l'interface.
  * Types seulement : aucun code d'exécution, importable des deux côtés.
  */
-import type { ApiErrorDetail } from './errors';
+import type { ApiErrorDetail, ProjectReasonDetail } from './errors';
 
 export type ProjectMode = 'embedded' | 'server';
 export type ProjectStatus = 'ok' | 'unreadable';
@@ -18,14 +18,22 @@ export interface Project {
   prefix: string;
   mode: ProjectMode;
   status: ProjectStatus;
-  /** Présent quand le Projet est illisible. */
+  /** Présent quand le Projet est illisible : pourquoi, en français (le journal, les autres clients). */
   reason?: string;
+  /**
+   * La cause de `reason`, codée (bdesk-ewr.8, `PROJECT_REASON_PARAMS` dans `errors.ts`), d'où l'interface écrit la raison dans sa langue. Absente quand le
+   * serveur ne l'a pas codée : l'interface affiche alors `reason`, comme pour un code qu'elle ne connaît pas.
+   */
+  reasonDetail?: ProjectReasonDetail;
 }
 
 /** Dossier contenant `.beads/` mais qui n'est pas un Projet suivi (workspace non-Dolt, par exemple). */
 export interface IgnoredFolder {
   path: string;
+  /** Pourquoi il est ignoré, en français. */
   reason: string;
+  /** La cause de `reason`, codée, comme celle d'un Projet illisible (`Project.reasonDetail`). */
+  reasonDetail?: ProjectReasonDetail;
 }
 
 /** `GET /api/projects` */
@@ -278,13 +286,14 @@ export interface SignalsResponse {
 
 /**
  * Corps des réponses d'erreur (même forme que celles de Fastify). `message` est en français (journal, autres clients) ; `code` et `params`, quand
- * l'erreur est l'une de celles que l'API prévoit, disent la même chose pour que l'interface l'écrive dans sa langue (voir `errors.ts`).
+ * l'erreur est l'une de celles que l'API prévoit, disent la même chose pour que l'interface l'écrive dans sa langue (voir `errors.ts`). Un 503
+ * (`project-unreadable`) porte la cause codée de sa raison dans `params.reasonDetail`, à côté de `params.reason` (bdesk-ewr.8).
  */
 export type ApiErrorBody = {
   statusCode: number;
   error: string;
   message: string;
-  /** Présent sur les 503 : pourquoi le Projet est illisible. */
+  /** Présent sur les 503 : pourquoi le Projet est illisible, en français (le même texte que `params.reason`). */
   reason?: string;
 } & (ApiErrorDetail | { code?: never; params?: never });
 
@@ -806,7 +815,10 @@ export interface MetricsProject {
 
 /** Un Projet demandé (ou suivi) dont la base n'a pas pu être lue : il n'entre pas dans les chiffres. */
 export interface MetricsUnreadableProject extends MetricsProject {
+  /** Pourquoi, en français. */
   reason: string;
+  /** La cause de `reason`, codée, comme celle d'un Projet illisible (`Project.reasonDetail`). */
+  reasonDetail?: ProjectReasonDetail;
 }
 
 /** `GET /api/metrics` */

@@ -148,6 +148,116 @@ describe('discoverProjects', () => {
     expect(ignored.find((i) => i.path === folder('autre'))?.reason).toContain('postgres');
   });
 
+  // bdesk-ewr.8 : chaque raison porte sa cause codée à côté (`reasonDetail`), et la raison française reste celle d'avant, mot pour mot.
+  describe('la cause codée de chaque raison, à côté de la raison française', () => {
+    const metadataOnly = (name: string, metadata: unknown) => write(folder(name, '.beads', 'metadata.json'), JSON.stringify(metadata));
+
+    it.each([
+      ['un workspace SQLite', { database: 'beads.db' }, 'Workspace SQLite (beads.db) : seuls les Projets Dolt sont suivis.', { code: 'sqlite-workspace', params: { database: 'beads.db' } }],
+      ['un workspace SQLite sans base nommée', { backend: 'sqlite' }, 'Workspace SQLite (sqlite) : seuls les Projets Dolt sont suivis.', { code: 'sqlite-workspace', params: { database: 'sqlite' } }],
+      ['un workspace d’une autre sorte', { backend: 'postgres', database: 'x' }, 'Workspace « postgres » : seuls les Projets Dolt sont suivis.', { code: 'other-workspace', params: { backend: 'postgres' } }],
+      ['un workspace qui ne dit pas sa sorte', {}, 'Workspace « inconnu » : seuls les Projets Dolt sont suivis.', { code: 'unknown-workspace', params: {} }],
+    ])('ignore %s', async (_label, metadata, reason, reasonDetail) => {
+      metadataOnly('atelier', metadata);
+
+      const { ignored } = await discoverProjects(config(), { dolt: fakeDolt() });
+
+      expect(ignored).toEqual([{ path: folder('atelier'), reason, reasonDetail }]);
+    });
+
+    it('ignore un workspace sans metadata.json, ou dont metadata.json n’est pas du JSON', async () => {
+      mkdirSync(folder('ardoise', '.beads'), { recursive: true });
+      write(folder('carnet', '.beads', 'metadata.json'), '{ pas du json');
+
+      const { ignored } = await discoverProjects(config(), { dolt: fakeDolt() });
+
+      expect(ignored).toEqual([
+        {
+          path: folder('ardoise'),
+          reason: 'Pas de metadata.json dans .beads : workspace beads incomplet, sans base Dolt.',
+          reasonDetail: { code: 'no-metadata', params: {} },
+        },
+        { path: folder('carnet'), reason: 'metadata.json illisible (JSON invalide).', reasonDetail: { code: 'invalid-metadata', params: {} } },
+      ]);
+    });
+
+    it('un mode Dolt qu’il ne sait pas lire', async () => {
+      doltWorkspace('atelier', { metadata: { dolt_mode: 'proxied-server', dolt_database: 'x' } });
+
+      const { projects } = await discoverProjects(config(), { dolt: fakeDolt() });
+
+      expect(projects[0]).toMatchObject({
+        reason: 'Mode Dolt « proxied-server » non pris en charge (embedded et server seulement).',
+        reasonDetail: { code: 'unsupported-mode', params: { mode: 'proxied-server' } },
+      });
+    });
+
+    it('une base absente : de ce poste (server), ou introuvable (embedded, sans base nommée)', async () => {
+      doltWorkspace('atelier', { metadata: { dolt_mode: 'server', dolt_database: 'b' }, database: ['dolt'] });
+      doltWorkspace('ardoise', { metadata: { dolt_mode: 'embedded' } });
+
+      const { projects } = await discoverProjects(config(), { dolt: fakeDolt() });
+
+      expect(projects.map(({ reason, reasonDetail }) => ({ reason, reasonDetail }))).toEqual([
+        {
+          reason: 'Base Dolt introuvable (.beads/embeddeddolt/<base>).',
+          reasonDetail: { code: 'database-not-found', params: { folder: join('.beads', 'embeddeddolt'), path: '' } },
+        },
+        {
+          reason:
+            "Base Dolt absente de ce poste (.beads/dolt/b introuvable) : le Projet est en mode server, sa base n'est pas disponible localement.",
+          reasonDetail: { code: 'database-not-local', params: { folder: join('.beads', 'dolt'), path: join('.beads', 'dolt', 'b') } },
+        },
+      ]);
+    });
+
+    // La raison française reste celle d'avant mot pour mot, chemins inhabituels compris : le serveur écrit le chemin par `join`, qui le normalise.
+    it.each([
+      ['../autre', join('.beads', 'autre')],
+      ['./x', join('.beads', 'embeddeddolt', 'x')],
+      ['a//b/', join('.beads', 'embeddeddolt', 'a', 'b') + '/'],
+      ['/etc', join('.beads', 'embeddeddolt', 'etc')],
+    ])('une base nommée %j : son chemin normalisé, dans la raison et dans la cause', async (database, path) => {
+      doltWorkspace('atelier', { metadata: { dolt_mode: 'embedded', dolt_database: database } });
+
+      const { projects } = await discoverProjects(config(), { dolt: fakeDolt() });
+
+      expect(projects.map(({ reason, reasonDetail }) => ({ reason, reasonDetail }))).toEqual([
+        {
+          reason: `Base Dolt introuvable (${join('.beads', 'embeddeddolt', database)}).`,
+          reasonDetail: { code: 'database-not-found', params: { folder: join('.beads', 'embeddeddolt'), path } },
+        },
+      ]);
+      expect(join('.beads', 'embeddeddolt', database)).toBe(path);
+    });
+
+    it('reprend la cause d’une erreur du client Dolt, et rien de plus pour une erreur qu’il n’a pas codée', async () => {
+      doltWorkspace('atelier', { metadata: { dolt_mode: 'embedded', dolt_database: 'x' }, database: ['embeddeddolt', 'x'] });
+      doltWorkspace('ardoise', { metadata: { dolt_mode: 'embedded', dolt_database: 'y' }, database: ['embeddeddolt', 'y'] });
+      doltWorkspace('carnet', { metadata: { dolt_mode: 'embedded', dolt_database: 'z' }, database: ['embeddeddolt', 'z'] });
+      const db = (name: string, base: string) => folder(name, '.beads', 'embeddeddolt', base);
+      const dolt = fakeDolt({
+        [db('atelier', 'x')]: new DoltQueryError({ code: 'dolt-locked', params: {} }, db('atelier', 'x'), true),
+        [db('ardoise', 'y')]: new DoltQueryError('texte que le client ne code pas', db('ardoise', 'y')),
+        [db('carnet', 'z')]: new DoltNotFoundError('dolt'),
+      });
+
+      const { projects } = await discoverProjects(config(), { dolt });
+      const [ardoise, atelier, carnet] = projects;
+
+      expect(atelier).toMatchObject({
+        reason: 'La base est tenue par un autre processus dolt : réessayez dans un instant.',
+        reasonDetail: { code: 'dolt-locked', params: {} },
+      });
+      expect(ardoise?.reason).toBe('texte que le client ne code pas');
+      expect(ardoise).not.toHaveProperty('reasonDetail');
+      expect(carnet).toMatchObject({
+        reason: "Le binaire « dolt » est introuvable : installez Dolt et vérifiez qu'il est dans le PATH.",
+        reasonDetail: { code: 'dolt-not-found', params: { binary: 'dolt' } },
+      });
+    });
+  });
+
   it('scanne deux niveaux sous la racine, sans descendre dans node_modules ni dans les dossiers cachés', async () => {
     for (const path of [['projet'], ['groupe', 'imbrique'], ['groupe', 'node_modules', 'dep'], ['.cache', 'p'], ['a', 'b', 'trop-profond']]) {
       doltWorkspace(join(...path), { metadata: { dolt_mode: 'embedded', dolt_database: 'x' }, database: ['embeddeddolt', 'x'] });
@@ -191,7 +301,9 @@ describe('discoverProjects', () => {
     );
 
     expect(projects.map((p) => p.path)).toEqual([join(elsewhere, 'manuel')]);
-    expect(ignored).toEqual([{ path: join(elsewhere, 'vide'), reason: expect.stringContaining('.beads') }]);
+    expect(ignored).toEqual([
+      { path: join(elsewhere, 'vide'), reason: 'Aucun dossier .beads dans ce dossier ajouté à la main.', reasonDetail: { code: 'no-beads-folder', params: {} } },
+    ]);
   });
 
   it('retire les Projets masqués, qu’ils viennent du scan ou de la configuration, sans les lister parmi les ignorés', async () => {

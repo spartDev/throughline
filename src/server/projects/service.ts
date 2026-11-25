@@ -1,13 +1,14 @@
 import type { TicketHistory } from '../../domain/flow';
 import type { Issue, IssueDetail, Project, ProjectsResponse } from '../../shared/api';
-import type { ApiErrorDetail } from '../../shared/errors';
+import type { ApiErrorDetail, ProjectReasonDetail } from '../../shared/errors';
+import { projectReason } from '../../shared/project-reasons';
 import { ReadAborted } from '../abort';
 import type { Config } from '../config';
 import { type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError, withOptions } from '../dolt/client';
 import { readTicketHistories } from '../dolt/history';
 import { readHead, readIssueBase, readIssueParts } from '../dolt/reader';
 import { createCheckedDoltClient } from '../dolt/stored-sql';
-import { type Discovery, type DiscoveredProject, discoverProjects } from './discovery';
+import { type Discovery, type DiscoveredProject, discoverProjects, reasonOf } from './discovery';
 import { buildIssueDetail, buildIssues } from './issues';
 
 export class ProjectNotFoundError extends Error {
@@ -35,14 +36,24 @@ export class IssueNotFoundError extends Error {
   }
 }
 
-/** Le Projet existe mais sa base ne peut pas être lue ; `reason` dit pourquoi. */
+/**
+ * Le Projet existe mais sa base ne peut pas être lue ; `reason` dit pourquoi, en français, et `reasonDetail` le dit par sa cause codée (bdesk-ewr.8),
+ * quand le serveur l'a codée.
+ */
 export class ProjectUnreadableError extends Error {
   constructor(
     readonly projectId: string,
     readonly reason: string,
+    readonly reasonDetail?: ProjectReasonDetail,
   ) {
     super(`Projet illisible : ${projectId} (${reason})`);
     this.name = 'ProjectUnreadableError';
+  }
+
+  /** Le code et les paramètres du 503 : la raison française, et sa cause codée quand elle l'est. */
+  get detail(): Extract<ApiErrorDetail, { code: 'project-unreadable' }> {
+    const { reason, reasonDetail } = this;
+    return { code: 'project-unreadable', params: reasonDetail === undefined ? { reason } : { reason, reasonDetail } };
   }
 }
 
@@ -189,7 +200,8 @@ export function createProjectService(
     if (project?.status !== 'ok') project = await find(rescanIntervalMs);
     if (!project) throw new ProjectNotFoundError(projectId);
     if (project.status !== 'ok' || !project.databasePath) {
-      throw new ProjectUnreadableError(projectId, project.reason ?? 'Base Dolt introuvable.');
+      const { reason, reasonDetail } = project.reason === undefined ? projectReason({ code: 'database-missing', params: {} }) : { ...project, reason: project.reason };
+      throw new ProjectUnreadableError(projectId, reason, reasonDetail);
     }
     return dolt.open(project.databasePath);
   }
@@ -210,7 +222,8 @@ export function createProjectService(
       return await task(signal ? withOptions(db, { signal }) : db);
     } catch (err) {
       if (err instanceof DoltNotFoundError || err instanceof DoltQueryError) {
-        throw new ProjectUnreadableError(projectId, err.message);
+        const { reason, reasonDetail } = reasonOf(err);
+        throw new ProjectUnreadableError(projectId, reason, reasonDetail);
       }
       throw err;
     }
@@ -257,6 +270,7 @@ export function createProjectService(
 
 /** Le Projet tel que l'API l'expose : sans l'emplacement interne de la base. */
 function toPublic(project: DiscoveredProject): Project {
-  const { id, name, path, prefix, mode, status, reason } = project;
-  return reason === undefined ? { id, name, path, prefix, mode, status } : { id, name, path, prefix, mode, status, reason };
+  const { id, name, path, prefix, mode, status, reason, reasonDetail } = project;
+  if (reason === undefined) return { id, name, path, prefix, mode, status };
+  return reasonDetail === undefined ? { id, name, path, prefix, mode, status, reason } : { id, name, path, prefix, mode, status, reason, reasonDetail };
 }

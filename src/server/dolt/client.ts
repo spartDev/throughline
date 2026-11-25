@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isAbortError, ReadAborted } from '../abort';
 import { Flight } from '../flight';
+import type { ProjectReasonDetail, StoredSqlObject } from '../../shared/errors';
 import { DoltNotFoundError, DoltQueryError, DoltTextError } from './errors';
 import { assertReadOnly, READ_ONLY_PREFIX } from './read-only';
 
@@ -93,9 +94,9 @@ export interface DoltDatabase {
   queryAll?(sqls: readonly string[], options?: QueryOptions): Promise<Row[][]>;
   /**
    * Ce que la table `dolt_nonlocal_tables` d'un commit mène ailleurs, pour qui lit une base de révision (`<base>/<commit>`) : Dolt y résout les noms avec la table de ce commit-là
-   * (bdesk-38k.74, `stored-sql.ts`). Rend les raisons de refuser la lecture, aucune si la table du commit est vide ou absente. Seul le client qui vérifie le SQL stocké l'a.
+   * (bdesk-38k.74, `stored-sql.ts`). Rend les objets qui font refuser la lecture, aucun si la table du commit est vide ou absente. Seul le client qui vérifie le SQL stocké l'a.
    */
-  storedSqlAt?(commit: string, options?: QueryOptions): Promise<string[]>;
+  storedSqlAt?(commit: string, options?: QueryOptions): Promise<StoredSqlObject[]>;
 }
 
 export interface DoltClientOptions {
@@ -159,13 +160,8 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
     try {
       env.DOLT_ROOT_PATH = fallbackRootPath();
     } catch (err) {
-      const reason = err instanceof Error ? String((err as NodeJS.ErrnoException).code ?? err.name) : 'erreur inconnue';
-      refusal = new DoltQueryError(
-        `Impossible de préparer un dossier de configuration privé pour dolt dans ${tmpdir()} (${reason}) : dolt n'est pas lancé, car il écrirait dans le ~/.dolt de l'utilisateur.`,
-        '',
-        false,
-        err,
-      );
+      const cause = err instanceof Error ? String((err as NodeJS.ErrnoException).code ?? err.name) : '';
+      refusal = new DoltQueryError({ code: 'private-config-failed', params: { directory: tmpdir(), cause } }, '', false, err);
     }
   }
   // Quatre voies, chacune avec sa file : le HEAD ne fait pas la queue derrière des lectures lourdes ni derrière les préfixes d'un scan, ni l'historique derrière les fiches.
@@ -202,7 +198,7 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
           idle,
         );
       } catch (err) {
-        if (err instanceof QueueFull) throw new DoltQueryError(`Trop de lectures Dolt en attente (plus de ${maxQueued}) : réessayez dans un instant.`, dir);
+        if (err instanceof QueueFull) throw new DoltQueryError({ code: 'queue-full', params: { max: maxQueued } }, dir);
         if (!(err instanceof DoltQueryError) || !err.locked || attempt >= retries) throw typed(err, binary, dir, sqls);
         await sleep(retryDelayMs * 2 ** attempt, signal);
       }
@@ -383,22 +379,22 @@ function toError(
 ): Error {
   if (error.code === 'ENOENT') {
     // ENOENT vient aussi d'un `cwd` absent : on ne le confond pas avec un binaire manquant.
-    return existsSync(dir) ? new DoltNotFoundError(binary) : new DoltQueryError(`Dossier introuvable : ${dir}`, dir);
+    return existsSync(dir) ? new DoltNotFoundError(binary) : new DoltQueryError({ code: 'folder-not-found', params: { path: dir } }, dir);
   }
   // Selon la version de Node, le processus tué pour avoir trop écrit est aussi marqué `killed` : on le teste avant le délai.
   if (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
-    return new DoltQueryError(`Sortie de dolt trop volumineuse (plus de ${formatBytes(maxOutputBytes)}) pour lire ${dir}`, dir);
+    return new DoltQueryError({ code: 'output-too-large', params: { bytes: maxOutputBytes, path: dir } }, dir);
   }
-  if (error.killed) return new DoltQueryError(`Délai dépassé (${timeoutMs} ms) pour lire ${dir}`, dir);
+  if (error.killed) return new DoltQueryError({ code: 'timeout', params: { ms: timeoutMs, path: dir } }, dir);
   // Dolt écrit ses erreurs sur stderr ; stdout n'a que les documents JSON des instructions réussies (le `{}` de la
   // transaction en lecture seule, des lignes de résultat) : jamais un message.
   const text = firstLines(stderr);
-  const detail = text || describeFailure(error, binary);
   // Dolt s'est arrêté de lui-même (code de sortie) : sa sortie est entière, et dit quelles instructions ont abouti. Tué par un signal, elle a pu être coupée n'importe où.
   const completed = typeof error.code === 'number' ? completedBefore(stdout) : undefined;
   // Ce que Dolt a écrit sur sa sortie d'erreur est du texte de Dolt (`DoltTextError`) ; « dolt a échoué (code N) sans message d'erreur » est le nôtre.
-  if (text) return new DoltTextError(detail, 'stderr', dir, LOCK_ERROR.test(detail), completed);
-  return new DoltQueryError(detail, dir, LOCK_ERROR.test(detail), undefined, completed);
+  if (text) return new DoltTextError(text, 'stderr', dir, LOCK_ERROR.test(text), completed);
+  // Sans message de Dolt, la cause est la nôtre (un code de sortie, un signal) : aucune n'est un verrou.
+  return new DoltQueryError(describeFailure(error, binary), dir, false, undefined, completed);
 }
 
 /** Au-delà de cette taille, la sortie d'un groupe qui a échoué n'est pas relue : ce qu'on y cherche (`DoltQueryError.completed`) tient en quelques lignes. */
@@ -422,10 +418,10 @@ function completedBefore(stdout: string): Row[][] | undefined {
  * Pourquoi dolt s'est arrêté sans rien dire. On ne reprend pas `error.message` : celui de Node cite la ligne de
  * commande (« Command failed: dolt sql -r json -q start transaction read only; select … »), requête comprise.
  */
-function describeFailure(error: ExecFileException, binary: string): string {
-  if (error.signal) return `dolt a été interrompu (${error.signal}) sans message d'erreur`;
-  if (typeof error.code === 'number') return `dolt a échoué (code de sortie ${error.code}) sans message d'erreur`;
-  return `Impossible de lancer « ${binary} » : ${error.code ?? 'cause inconnue'}.`;
+function describeFailure(error: ExecFileException, binary: string): ProjectReasonDetail {
+  if (error.signal) return { code: 'dolt-interrupted', params: { signal: error.signal } };
+  if (typeof error.code === 'number') return { code: 'dolt-exit-code', params: { code: String(error.code) } };
+  return { code: 'launch-failed', params: { binary, cause: error.code ?? '' } };
 }
 
 /**
@@ -447,13 +443,10 @@ function withoutQuery(text: string, sql: string): string {
  */
 function typed(err: unknown, binary: string, dir: string, sqls: readonly string[]): Error {
   if (err instanceof DoltQueryError || err instanceof DoltNotFoundError || (err instanceof Error && isAbortError(err))) return err;
-  let reason = 'erreur inconnue';
-  if (sqls.some((sql) => sql.includes('\0'))) reason = 'la requête contient un octet nul, que le client n’envoie pas à dolt';
-  else if (err instanceof Error) reason = String((err as NodeJS.ErrnoException).code ?? err.name);
-  return new DoltQueryError(`Impossible de lancer « ${binary} » : ${reason}.`, dir, false, err);
+  if (sqls.some((sql) => sql.includes('\0'))) return new DoltQueryError({ code: 'null-byte', params: { binary } }, dir, false, err);
+  const cause = err instanceof Error ? String((err as NodeJS.ErrnoException).code ?? err.name) : '';
+  return new DoltQueryError({ code: 'launch-failed', params: { binary, cause } }, dir, false, err);
 }
-
-const formatBytes = (bytes: number) => (bytes >= 1024 * 1024 ? `${Math.round(bytes / (1024 * 1024))} Mo` : `${bytes} octets`);
 
 /** Dolt écrit parfois plusieurs lignes d'erreur : on garde les premières, sans le bruit d'usage (ni plus de 500 caractères). */
 function firstLines(text: string, count = 3): string {
@@ -651,7 +644,7 @@ export function sqlIdent(name: string): string {
  */
 export function parseDoltDate(value: unknown): Date {
   const date = typeof value === 'string' ? new Date(`${value.replace(' ', 'T')}Z`) : new Date(Number.NaN);
-  if (Number.isNaN(date.getTime())) throw new DoltQueryError(`Date Dolt invalide : ${String(value)}`);
+  if (Number.isNaN(date.getTime())) throw new DoltQueryError({ code: 'invalid-date', params: { value: String(value) } });
   return date;
 }
 
@@ -669,12 +662,8 @@ export function parseDoltInteger(value: unknown, column: string): number | undef
   const number = typeof value === 'string' ? Number(value) : value;
   // Une chaîne n'est lue que si elle est l'écriture décimale de l'entier qu'elle donne : « 2 » oui, « 02 », « +2 », « 2.0 », « 1e3 », « -0 » non.
   if (typeof number === 'number' && Number.isSafeInteger(number) && (typeof value !== 'string' || String(number) === value)) return number;
-  throw new DoltQueryError(`Entier Dolt invalide (${column}) : ${shown(value)}`);
-}
-
-/** Une valeur dans un message d'erreur : un texte entre guillemets, le reste en JSON, au plus quarante caractères. */
-function shown(value: unknown): string {
+  // La valeur au plus en quarante caractères : un texte (que la raison met entre guillemets), le reste en JSON.
   const text = typeof value === 'string' ? value : typeof value === 'object' ? JSON.stringify(value) : String(value);
   const clipped = text.length > 40 ? `${text.slice(0, 40)}…` : text;
-  return typeof value === 'string' ? `« ${clipped} »` : clipped;
+  throw new DoltQueryError({ code: typeof value === 'string' ? 'invalid-integer-text' : 'invalid-integer', params: { column, value: clipped } });
 }

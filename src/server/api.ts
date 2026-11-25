@@ -119,10 +119,9 @@ function handleError(error: FastifyError, req: FastifyRequest, reply: FastifyRep
   }
   if (error instanceof ProjectUnreadableError) {
     req.log.warn(whereOf(req), clip(error.message));
-    // `reason` reste à sa place pour les clients qui la lisent ; elle est aussi le seul paramètre du code, telle quelle : une phrase française du
-    // serveur, un gabarit par classe de cause qui peut porter un chemin, un délai, un nom ou une valeur de la base. L'interface ne la traduit pas
-    // encore (bdesk-ewr.8).
-    return send(reply, 503, `Projet illisible : ${error.reason}`, { code: 'project-unreadable', params: { reason: error.reason } }, error.reason);
+    // `reason` reste à sa place pour les clients qui la lisent ; elle est aussi un paramètre du code, telle quelle, à côté de sa cause codée
+    // (`reasonDetail`, bdesk-ewr.8), d'où l'interface écrit la raison dans sa langue. Une raison sans cause codée part seule : l'interface l'affiche telle quelle.
+    return send(reply, 503, `Projet illisible : ${error.reason}`, error.detail, error.reason);
   }
   if (!(error instanceof Error)) {
     // Fastify type l'erreur en `FastifyError`, mais le code peut lever n'importe quoi (`throw 'x'`, `throw null`) : ni message, ni code, ni pile

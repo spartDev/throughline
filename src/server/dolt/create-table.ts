@@ -449,28 +449,30 @@ function tableOptions(c: Cursor): boolean {
   }
 }
 
+/** Ce qu'une définition a de non admis, une sorte d'objet de SQL stocké (`StoredSqlObject`) : `stored-sql.ts` y ajoute la table et la racine. */
+export type CreateTableProblem = 'not-a-table' | 'unrecognized-definition' | 'not-admitted' | 'unrecognized-options';
+
 /**
- * `createTableProblems(text, label)` : `text` est admis (rien n'est rendu) s'il commence par `CREATE TABLE` et que son corps ne contient que des colonnes, clés, clés
- * étrangères et contraintes `check` de la forme ci-dessus, et des options de table ordinaires. Sinon, un problème nommé `label` (jamais le contenu de `text`) :
+ * `createTableProblems(text)` : `text` est admis (rien n'est rendu) s'il commence par `CREATE TABLE` et que son corps ne contient que des colonnes, clés, clés
+ * étrangères et contraintes `check` de la forme ci-dessus, et des options de table ordinaires. Sinon, un problème (jamais le contenu de `text`), que la raison
+ * dit sous le nom de la table que l'app a demandée :
  *
- * - `text` ne commence pas par `CREATE TABLE` (une vue — `CREATE VIEW` — ou toute autre forme) : refusé, comme une vue ;
- * - une colonne porte `GENERATED` (visible ou, pour un index fonctionnel, cachée derrière `KEY … ((…))`) : refusé, nommé comme une colonne générée ;
+ * - `text` ne commence pas par `CREATE TABLE` (une vue — `CREATE VIEW` — ou toute autre forme) : refusé, comme une vue (`not-a-table`) ;
+ * - une colonne porte `GENERATED` (visible ou, pour un index fonctionnel, cachée derrière `KEY … ((…))`) : refusé, nommé comme une colonne générée (`not-admitted`) ;
  * - toute autre construction que la grammaire ne reconnaît pas (un `check` d'une autre forme, un défaut entre parenthèses qui n'est pas `(json_object())`, un mot-clé
- *   inattendu, un jeton que le découpage ne reconnaît pas) : refusé, nommé génériquement.
- *
- * Rien de `text` n'est répété dans le problème : seul `label` (le nom de la table que l'app a demandée, pas un extrait de la base) y figure.
+ *   inattendu, un jeton que le découpage ne reconnaît pas) : refusé, nommé génériquement (`unrecognized-definition`, `unrecognized-options`, ou `not-admitted` dans le corps).
  */
-export function createTableProblems(text: string, label: string): string[] {
+export function createTableProblems(text: string): CreateTableProblem[] {
   const tokens = tokenize(text);
-  if (!tokens) return [`${label} : construction non reconnue dans la définition de la table`];
+  if (!tokens) return ['unrecognized-definition'];
   const c = new Cursor(tokens);
-  if (!c.keyword('CREATE') || !c.keyword('TABLE')) return [`${label} est une vue, ou autre chose qu'une table, que l'app pourrait lire à la place d'une table`];
-  if (backtickIdent(c) === undefined) return [`${label} : construction non reconnue dans la définition de la table`];
-  if (!c.punct('(')) return [`${label} : construction non reconnue dans la définition de la table`];
-  if (!bodyItem(c)) return [`${label} : colonne générée, index fonctionnel, ou autre construction non admise`];
-  while (c.punct(',')) if (!bodyItem(c)) return [`${label} : colonne générée, index fonctionnel, ou autre construction non admise`];
-  if (!c.punct(')')) return [`${label} : colonne générée, index fonctionnel, ou autre construction non admise`];
-  if (!tableOptions(c)) return [`${label} : construction non reconnue dans les options de la table`];
-  if (!c.atEof()) return [`${label} : construction non reconnue dans la définition de la table`];
+  if (!c.keyword('CREATE') || !c.keyword('TABLE')) return ['not-a-table'];
+  if (backtickIdent(c) === undefined) return ['unrecognized-definition'];
+  if (!c.punct('(')) return ['unrecognized-definition'];
+  if (!bodyItem(c)) return ['not-admitted'];
+  while (c.punct(',')) if (!bodyItem(c)) return ['not-admitted'];
+  if (!c.punct(')')) return ['not-admitted'];
+  if (!tableOptions(c)) return ['unrecognized-options'];
+  if (!c.atEof()) return ['unrecognized-definition'];
   return [];
 }

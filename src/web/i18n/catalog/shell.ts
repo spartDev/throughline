@@ -328,7 +328,7 @@ const en: typeof fr = {
   loadErrors: {
     unreachable: 'The beads-desktop server is unreachable',
     unreachableDetail: 'Check that the beads-desktop command is still running, then try again.',
-    unreadableProject: 'Unreadable project',
+    unreadableProject: 'Unreadable Project',
     serverError: 'The server ran into an error',
     notFound: 'Resource not found',
     failed: 'Loading failed',

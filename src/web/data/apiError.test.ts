@@ -158,13 +158,16 @@ describe('errorText', () => {
     expect(Object.keys(SENTENCES).sort()).toEqual(Object.keys(API_ERROR_PARAMS).sort());
   });
 
-  it('affiche la raison d’un Projet illisible telle que le serveur l’écrit, en français (bdesk-ewr.8 la traduira)', () => {
+  it('affiche la raison d’un Projet illisible sans cause codée telle que le serveur l’écrit, en français ; codée, dans la langue (bdesk-ewr.8)', () => {
     const reason = 'La base est tenue par un autre processus dolt : réessayez dans un instant.';
     const error = new ApiError(reason, 503, { reason, detail: { code: 'project-unreadable', params: { reason } } });
+    const coded = new ApiError(reason, 503, { reason, detail: { code: 'project-unreadable', params: { reason, reasonDetail: { code: 'dolt-locked', params: {} } } } });
 
     expect(errorText(error, 'en')).toBe(`Unreadable Project: ${reason}`);
     // Le titre dit déjà « Projet illisible » : le détail est la raison seule, dans les deux langues.
     expect(describeError(error, 'en')).toMatchObject({ detail: reason, specific: true });
+    expect(errorText(coded, 'en')).toBe('Unreadable Project: The database is held by another dolt process: try again in a moment.');
+    expect(describeError(coded, 'en')).toMatchObject({ detail: 'The database is held by another dolt process: try again in a moment.', specific: true });
   });
 
   it('écrit le message tel quel pour une erreur sans code (un message que le serveur n’a pas codé)', () => {

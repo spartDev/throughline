@@ -1,5 +1,6 @@
 import { Command } from 'cmdk';
 import { Check, CornerDownLeft, Globe, TriangleAlert } from 'lucide-react';
+import { projectReasonText } from '../data/apiError';
 import { isReadable, ticketTitle } from '../data/helpers';
 import type { Issue, Project } from '../data/types';
 import { priorityMeta, statusLabel } from '../design/issue-palette';
@@ -168,6 +169,7 @@ function ProjectRow({ project, go }: { project: Project; go: (to: string) => voi
   const current = project.id === route.projectId;
   const readable = isReadable(project);
   const t = useT();
+  const { language } = useLanguage();
   return (
     <Command.Item
       value={`project:${project.id}`}
@@ -185,7 +187,7 @@ function ProjectRow({ project, go }: { project: Project; go: (to: string) => voi
           <TriangleAlert size={13} aria-hidden="true" className="shrink-0 text-danger" />
           <span className="truncate">
             <span className="sr-only">{t.shell.common.unreadableBecause}</span>
-            {project.reason ?? t.shell.common.unreadable}
+            {projectReasonText(project, language) ?? t.shell.common.unreadable}
           </span>
         </span>
       )}

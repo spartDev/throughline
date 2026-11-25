@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyzeChronologies } from '../../domain/chronology';
 import { analyzeFailures } from '../../domain/failures';
 import { analyzeFlow } from '../../domain/flow';
+import type { StoredSqlObject } from '../../shared/errors';
 import { readsOutsideHead, tablesRead } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type Row } from './client';
 import { type Commit, dependencyLifetimes, readTicketHistories } from './history';
@@ -469,7 +470,7 @@ describe('readTicketHistories', () => {
     // B-NL (relecture finale de bdesk-38k.74) : la `dolt_nonlocal_tables` du commit d'ancre mène ailleurs les noms que Dolt résout dans sa base de révision, `dolt_history_dependencies`
     // comprise. Le client qui vérifie la lit (`storedSqlAt`), sans résoudre aucun nom, avant que ce nom soit lu.
     describe('la table dolt_nonlocal_tables du commit d’ancre', () => {
-      const withNonlocal = (found: string[]) => {
+      const withNonlocal = (found: StoredSqlObject[]) => {
         const asked: string[] = [];
         const db = Object.assign(eraDb([columns(CURRENT_COLUMNS, '`ma_base/c3`'), viewsOf('`ma_base/c3`')]), {
           storedSqlAt: (commit: string) => {
@@ -481,7 +482,7 @@ describe('readTicketHistories', () => {
       };
 
       it('refuse une époque dont l’ancre mène des noms ailleurs, avant de lire le moindre nom de sa base de révision', async () => {
-        const { db, asked } = withNonlocal(["« dolt_nonlocal_tables » n'est pas vide (époque du commit c3)"]);
+        const { db, asked } = withNonlocal([{ kind: 'nonlocal-rows', place: { in: 'era', commit: 'c3' } }]);
 
         const error = await readTicketHistories(db).catch((err: unknown) => err);
 
@@ -527,7 +528,7 @@ describe('readTicketHistories', () => {
     // garde de lecture seule : `create` et `table`, mots nus, où qu'ils s'écrivent — voir `dependencyColumns`) ; ce test épingle seulement que `dependencyColumns` relaie ce qu'il rend.
     it('refuse ce que `storedSqlAt` rend pour l’ancre, avant de lire le moindre nom de sa base de révision (index fonctionnel, B-FI compris)', async () => {
       const db = Object.assign(eraDb([columns(CURRENT_COLUMNS, '`ma_base/c3`'), viewsOf('`ma_base/c3`')]), {
-        storedSqlAt: () => Promise.resolve(['« dependencies » (époque du commit c3) : colonne générée, index fonctionnel, ou autre construction non admise']),
+        storedSqlAt: () => Promise.resolve<StoredSqlObject[]>([{ kind: 'not-admitted', table: 'dependencies', place: { in: 'era', commit: 'c3' } }]),
       });
 
       const error = await readTicketHistories(db).catch((err: unknown) => err);

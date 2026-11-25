@@ -47,7 +47,7 @@ describe('the shell in English', () => {
     expect(within(navigation).getByRole('link', { name: /Overview/ })).toBeTruthy();
     expect(within(navigation).getByRole('link', { name: 'Watch list' })).toBeTruthy();
     expect(within(navigation).getByRole('heading', { name: /Projects/ })).toBeTruthy();
-    // La raison d'un Projet illisible vient du serveur : elle n'est pas traduite.
+    // Une raison sans cause codée (celle de la fixture) s'affiche telle que le serveur l'écrit ; une raison codée, dans la langue (`projectReason.language.test.tsx`).
     await waitFor(() => expect(text(navigation)).toContain('Unreadable: Base Dolt verrouillée par un autre processus'));
     expect(screen.getByRole('navigation', { name: 'Tabs' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toBeTruthy();
