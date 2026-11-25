@@ -1,6 +1,8 @@
 import { abortable } from '../abort';
 import { createDoltClient, type DoltClient, type DoltClientOptions, type DoltDatabase, DoltQueryError, DoltTextError, type Lane, type QueryOptions, queryAll, type Row, sqlIdent, sqlString } from './client';
-import { createTableProblems } from './create-table';
+import { NONLOCAL_TABLE, type ProjectReasonDetail, type StoredSqlObject, type StoredSqlPlace } from '../../shared/errors';
+import { storedSqlObjectFr } from '../../shared/project-reasons';
+import { type CreateTableProblem, createTableProblems } from './create-table';
 
 /**
  * Du SQL stocké dans une base, que Dolt exécute quand on la lit (bdesk-38k.69, 38k.74). Le garde de lecture seule (`read-only.ts`) ne voit que le texte de la requête ;
@@ -97,14 +99,13 @@ const HEAD_VIEWS_FOUND = `select name ${HEAD_VIEWS}`;
  */
 const UNCOMMITTED = 'from dolt_status';
 
-/**
- * La table système qui mène un nom de table vers une autre table (voir l'en-tête du fichier). Elle existe, vide, dans les bases que bd 1.x crée : sa migration 0040 y pose quatre lignes
+/*
+ * `NONLOCAL_TABLE` (`src/shared/errors.ts`, que les raisons nomment aussi) : la table système qui mène un nom de table vers une autre table (voir l'en-tête du fichier). Elle existe, vide, dans les bases que bd 1.x crée : sa migration 0040 y pose quatre lignes
  * (`wisps`, `wisp_*`, `repo_mtimes`, `local_metadata`, vers `main`), une par commit, et la 0041 les retire d'un `delete from` avant de toucher à `dependencies`. `dolt_nonlocal_tables` n'est
  * donc refusée que si elle porte des lignes, jamais parce qu'elle existe. Mesuré sur les copies de cinq Projets réels (109 à 677 commits) : présente et vide dans HEAD et dans le working set
  * de chacune, absente du premier commit (elle apparaît aux commits n° 42 à 293). Une base que bd est en train de migrer, ou dont la migration s'est arrêtée entre les deux, est refusée
  * jusqu'à la prochaine commande bd, qui l'achève.
  */
-const NONLOCAL_TABLE = 'dolt_nonlocal_tables';
 
 /**
  * Le nombre de tables `dolt_nonlocal_tables` non vides (0 ou 1) dans la racine `to` (`'WORKING'`, `'HEAD'` ou un commit), lu **sans résoudre aucun nom de table**, donc sans que la
@@ -167,26 +168,29 @@ export function schemaCreateSql(base: string, to: string): string {
 /** Les cinq noms que `schemaCreateSql` attend, une ligne chacun (une table dérivée, `n`) : `select 'issues' as expected union all select 'dependencies' …`. */
 const EXPECTED_TABLES = `(${STORED_SQL_TABLES.map((name, i) => `select ${sqlString(name)}${i === 0 ? ' as expected' : ''}`).join(' union all ')}) n`;
 
-/** Ce que la raison dit d'une table que la comparaison ne rend pas, après son nom : « « labels » (dans HEAD) : … ». */
-const NO_DEFINITION = 'aucune définition de table lue par la comparaison : la table manque, ou la comparaison est incomplète';
-
 /**
  * À l'ancre d'une époque, l'app ne lit que l'historique des dépendances (`<base>/<commit>.dolt_history_dependencies`, `history.ts`) : seule `dependencies` doit avoir une ligne dans la
  * comparaison. Les autres, qu'une histoire ancienne peut ne pas avoir, sont jugées si la comparaison les rend, sans être exigées.
  */
 const ERA_REQUIRED: readonly string[] = ['dependencies'];
 
+/** Une racine : le working set, dont la raison ne dit rien. */
+const WORKING: StoredSqlPlace = { in: 'working' };
+const HEAD: StoredSqlPlace = { in: 'head' };
+
 /**
- * Les problèmes qu'une liste de `(expected, tbl, stmt)` rendue par `schemaCreateSql` révèle, `where` disant dans quelle racine (` (dans HEAD)`) comme pour `nonlocalProblem`. Dans l'ordre des
+ * Les problèmes qu'une liste de `(expected, tbl, stmt)` rendue par `schemaCreateSql` révèle, `place` disant dans quelle racine (HEAD) comme pour `nonlocalProblem`. Dans l'ordre des
  * tables lues : chaque table qu'une ligne a `expected` pour nom (cette valeur est celle que la requête a écrite : égalité exacte avec la liste fermée des cinq noms, jamais un nom de la base) a
  * son `CREATE TABLE` jugé par la grammaire fermée, une fois par ligne (deux tables dont la casse diffère sont jugées toutes deux) ; une table **exigée** (`required`, les cinq par défaut) dont
  * aucune ligne n'a de texte est refusée, qu'une ligne la nomme sans texte ou qu'aucune ne l'ait (une sortie vide, tronquée) : c'est m2, la table sans définition lue n'est jamais admise faute de ligne.
  */
-const schemaCreateProblems = (rows: readonly Row[], where = '', required: readonly string[] = STORED_SQL_TABLES): string[] =>
-  STORED_SQL_TABLES.flatMap((name) => {
+const schemaCreateProblems = (rows: readonly Row[], place: StoredSqlPlace = WORKING, required: readonly string[] = STORED_SQL_TABLES): StoredSqlObject[] =>
+  STORED_SQL_TABLES.flatMap((name): StoredSqlObject[] => {
     const defined = rows.filter((row) => text(row.expected) === name && text(row.stmt) !== '');
-    if (defined.length === 0) return required.includes(name) ? [`${named(name)}${where} : ${NO_DEFINITION}`] : [];
-    return defined.flatMap((row) => createTableProblems(text(row.stmt), `${named(text(row.tbl))}${where}`));
+    if (defined.length === 0) return required.includes(name) ? [{ kind: 'table-without-definition', table: safeName(name), place }] : [];
+    return defined.flatMap((row) =>
+      createTableProblems(text(row.stmt)).map((kind: CreateTableProblem): StoredSqlObject => ({ kind, table: safeName(text(row.tbl)), place })),
+    );
   });
 
 /**
@@ -289,25 +293,31 @@ const MAX_ATTEMPTS = 3;
 
 /**
  * Combien d'objets la raison d'un refus nomme au plus : une base en porte autant qu'on veut (des centaines de colonnes générées, des centaines de vues dans une ancre d'époque), et
- * la raison part telle quelle dans la réponse 503. Les suivants sont comptés (« et K autres »). Avec les noms bornés (`named`), la raison ne dépasse jamais quelques milliers de caractères.
+ * la raison part telle quelle dans la réponse 503. Les suivants sont comptés (« et K autres »). Avec les noms bornés (`safeName`), la raison ne dépasse jamais quelques milliers de caractères.
  */
 export const MAX_NAMED_OBJECTS = 5;
 
-/** Les objets d'un refus, `MAX_NAMED_OBJECTS` au plus, et combien d'autres. */
-function listed(objects: readonly string[]): string {
-  const shown = objects.slice(0, MAX_NAMED_OBJECTS).join(' ; ');
-  const others = objects.length - MAX_NAMED_OBJECTS;
-  return others > 0 ? `${shown} ; et ${others} autre${others > 1 ? 's' : ''}` : shown;
-}
+/** La cause d'un refus : les objets, `MAX_NAMED_OBJECTS` au plus, et combien d'autres. */
+const storedSqlReason = (found: readonly StoredSqlObject[]): ProjectReasonDetail => ({
+  code: 'stored-sql',
+  params: { objects: found.slice(0, MAX_NAMED_OBJECTS), others: Math.max(0, found.length - MAX_NAMED_OBJECTS) },
+});
 
-/** Du SQL stocké dans la base : elle n'est pas lue. Un Projet illisible, dont `reason` (ce message) dit pourquoi : les premiers objets, puis combien d'autres (`MAX_NAMED_OBJECTS`) ; `objects` les a tous. */
+/**
+ * Du SQL stocké dans la base : elle n'est pas lue. Un Projet illisible, dont `reason` (ce message) dit pourquoi : les premiers objets, puis combien d'autres (`MAX_NAMED_OBJECTS`) ;
+ * `found` les a tous, et `objects` les nomme tous, en français.
+ */
 export class StoredSqlError extends DoltQueryError {
+  /** Chaque objet, tel que la raison française le nomme. */
+  readonly objects: readonly string[];
+
   constructor(
-    readonly objects: readonly string[],
+    readonly found: readonly StoredSqlObject[],
     dir = '',
   ) {
-    super(`SQL stocké dans la base, que Dolt exécuterait à la lecture : ${listed(objects)}. La base n'est pas lue.`, dir);
+    super(storedSqlReason(found), dir);
     this.name = 'StoredSqlError';
+    this.objects = found.map(storedSqlObjectFr);
   }
 }
 
@@ -331,31 +341,39 @@ function firstCodePoints(text: string, count: number): string {
  * points de code, non à autant d'unités UTF-16 (`slice` coupait une paire en deux). Un point de code, non un graphème : la borne tient sans condition (un graphème peut porter autant de
  * marques combinantes qu'on veut), et couper un graphème en deux n'a pas de conséquence.
  */
-export const named = (name: string) => `« ${firstCodePoints(name, MAX_NAME_LENGTH).replace(/[\p{C}\p{Zl}\p{Zp}]/gu, '?')} »`;
+const safeName = (name: string) => firstCodePoints(name, MAX_NAME_LENGTH).replace(/[\p{C}\p{Zl}\p{Zp}]/gu, '?');
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 
-const viewProblem = (name: string) => `${named(name)} est une vue, que l'app pourrait lire à la place d'une table`;
-const columnProblem = (table: string, column: string) => `colonne générée ${named(column)} de ${named(table)}`;
+// Les objets que la raison nomme (`StoredSqlObject`, écrits par `storedSqlObjectFr`) : les noms de la base y sont bornés (`safeName`).
+const viewProblem = (name: string, place: StoredSqlPlace = WORKING): StoredSqlObject => ({ kind: 'view', name: safeName(name), place });
+const columnProblem = (table: string, column: string, place: StoredSqlPlace = WORKING): StoredSqlObject => ({
+  kind: 'generated-column',
+  table: safeName(table),
+  column: safeName(column),
+  place,
+});
 /** Un index fonctionnel (bdesk-38k.74, round 3, B-FI) : une colonne générée cachée, que ni `information_schema.columns` ni `show full columns` ne listent. */
-const indexProblem = (table: string, index: string) => `index fonctionnel ${named(index)} de ${named(table)}`;
+const indexProblem = (table: string, index: string): StoredSqlObject => ({ kind: 'functional-index', table: safeName(table), index: safeName(index) });
 /**
- * La table qui mène des noms ailleurs porte des lignes : `where` dit dans quelle racine (` (époque du commit abc12345)` pour l'ancre d'une époque ; vide pour le working set et HEAD, dont
+ * La table qui mène des noms ailleurs porte des lignes : `place` dit dans quelle racine (l'ancre d'une époque, « (époque du commit abc12345) » ; rien pour le working set et HEAD, dont
  * `nonlocalFound` ne dit qu'une raison), et rien de ce qu'elle porte n'est cité. bdesk-38k.74, round 3, R3 (relecture finale) : la raison disait deux fois « n'est pas vide », une pour le
  * working set et une pour HEAD, avec une explication technique (« Dolt y lit des noms de tables menés vers d'autres tables ») qui alarme pour ce qui est le plus souvent une migration de bd
  * en cours (§ `NONLOCAL_TABLE`). Dite une fois, sans jargon, avec quoi faire : réessayer, ou laisser une commande bd l'achever.
  */
-const nonlocalProblem = (where = ''): string =>
-  `${named(NONLOCAL_TABLE)} n'est pas vide${where} : la base semble en cours de migration par l'outil de tickets ; réessayez dans un instant, ou lancez n'importe quelle commande de cet outil, qui achèvera la migration`;
+const nonlocalProblem = (place: StoredSqlPlace = WORKING): StoredSqlObject => ({ kind: 'nonlocal-rows', place });
 
 // Ce que disent les lignes des relevés (`VIEWS_FOUND`, `GENERATED_FOUND`, `FUNCTIONAL_INDEXES_FOUND`, `HEAD_VIEWS_FOUND`), que le diagnostic et le dernier essai d'une lecture lisent de même.
-const viewsFound = (rows: readonly Row[]): string[] => [...new Set(rows.map((row) => viewProblem(text(row.view_name))))];
-const generatedFound = (rows: readonly Row[]): string[] => rows.map((row) => columnProblem(text(row.tbl), text(row.col)));
-const functionalIndexesFound = (rows: readonly Row[]): string[] => rows.map((row) => indexProblem(text(row.tbl), text(row.idx)));
-const headViewsFound = (rows: readonly Row[]): string[] => [...new Set(rows.map((row) => `${viewProblem(text(row.name))} (dans HEAD)`))];
+/** Les vues d'un relevé, chacune une fois (le relevé peut répéter un nom) : deux vues dont le nom borné est le même n'en font qu'une, comme leur phrase. */
+const distinctViews = (names: readonly string[], place: StoredSqlPlace): StoredSqlObject[] =>
+  [...new Set(names.map(safeName))].map((name) => ({ kind: 'view', name, place }));
+const viewsFound = (rows: readonly Row[]): StoredSqlObject[] => distinctViews(rows.map((row) => text(row.view_name)), WORKING);
+const generatedFound = (rows: readonly Row[]): StoredSqlObject[] => rows.map((row) => columnProblem(text(row.tbl), text(row.col)));
+const functionalIndexesFound = (rows: readonly Row[]): StoredSqlObject[] => rows.map((row) => indexProblem(text(row.tbl), text(row.idx)));
+const headViewsFound = (rows: readonly Row[]): StoredSqlObject[] => distinctViews(rows.map((row) => text(row.name)), HEAD);
 /** `storedNonlocalFound` : une ligne, les comptes du working set et de HEAD (un nombre, ou une chaîne derrière un serveur : tout ce qui n'est pas « 0 » compte). */
 // R3 : une seule raison, que la table soit non vide dans le working set, dans HEAD, ou les deux — jamais deux fois la même phrase.
-const nonlocalFound = (rows: readonly Row[]): string[] => {
+const nonlocalFound = (rows: readonly Row[]): StoredSqlObject[] => {
   const [row] = rows;
   const counted = (value: unknown): boolean => String(value ?? '0') !== '0';
   return counted(row?.working) || counted(row?.head) ? [nonlocalProblem()] : [];
@@ -371,7 +389,7 @@ function exhausted(err: DoltQueryError, dir: string): DoltQueryError {
   const [views = [], generated = [], functionalIndexes = [], , headViews = []] = err.completed ?? [];
   const seen = [...viewsFound(views), ...generatedFound(generated), ...functionalIndexesFound(functionalIndexes), ...headViewsFound(headViews)];
   if (seen.length > 0) return new StoredSqlError(seen, dir);
-  return new DoltQueryError(`La base change plus vite que la vérification du SQL qu'elle porte (${MAX_ATTEMPTS} essais) : réessayez dans un instant.`, dir);
+  return new DoltQueryError({ code: 'check-outpaced', params: { attempts: MAX_ATTEMPTS } }, dir);
 }
 
 /** `Extra` d'une colonne (`show columns`) : générée par une expression, virtuelle ou stockée (`DEFAULT_GENERATED` est un défaut ordinaire, que bd utilise). */
@@ -388,18 +406,22 @@ const tableName = (row: Row): string => text(Object.entries(row).find(([column])
 
 /**
  * Ce que porte une source d'historique que l'app lit, de ses colonnes (`show columns from <source>`) et, pour la base de révision d'une ancre d'époque, des tables et
- * vues de cette base (`revisionTablesSql`). `label` dit de quelle source il s'agit (« historique des dépendances », « époque du commit abc12345 »). L'ancre est un commit :
+ * vues de cette base (`revisionTablesSql`). `place` dit de quelle source il s'agit (l'historique des dépendances, ou l'époque d'un commit). L'ancre est un commit :
  * ni l'un ni l'autre ne peut changer entre ces lectures et celle de la source.
  *
  * Aucun nom n'y est comparé à ceux que l'app lit : Dolt lit `dolt_history_dependencieſ` comme `dolt_history_dependencies` (voir l'en-tête du fichier), et un nom qu'on ne sait
  * pas reconnaître est un nom qu'on ne sait pas refuser. Toute vue de la base de révision est refusée, sauf les deux de bd, admises par égalité exacte avec leur nom.
  */
-export function storedSqlInSource(columns: readonly Row[], tables: readonly Row[] = [], label = 'historique des dépendances'): string[] {
+export function storedSqlInSource(
+  columns: readonly Row[],
+  tables: readonly Row[] = [],
+  place: StoredSqlPlace = { in: 'dependencies-history' },
+): StoredSqlObject[] {
   return [
-    ...tables
-      .filter((row) => text(row.Table_type) !== 'BASE TABLE' && !BD_VIEWS.includes(tableName(row)))
-      .map((row) => `${viewProblem(tableName(row))} (${label})`),
-    ...columns.filter((row) => isGenerated(row.Extra)).map((row) => `colonne générée ${named(text(row.Field))} de l'historique des dépendances (${label})`),
+    ...tables.filter((row) => text(row.Table_type) !== 'BASE TABLE' && !BD_VIEWS.includes(tableName(row))).map((row) => viewProblem(tableName(row), place)),
+    ...columns
+      .filter((row) => isGenerated(row.Extra))
+      .map((row): StoredSqlObject => ({ kind: 'history-generated-column', column: safeName(text(row.Field)), place })),
   ];
 }
 
@@ -425,8 +447,7 @@ export const readsNoTable = (sql: string): boolean => /^\s*select\b/i.test(sql) 
 const REFUSED_BY_DOLT = /error on line \d+ for query/;
 
 /** Ce que la raison dit quand une instruction de la vérification échoue autrement que par son assertion : le texte de Dolt n'y est pas. */
-const CHECK_REFUSED =
-  "La vérification du SQL stocké n'a pas pu s'achever : Dolt a refusé l'une de ses propres requêtes, dont le message n'est pas repris (il pourrait citer ce que la base lui fait lire). La base n'est pas lue.";
+const CHECK_REFUSED: ProjectReasonDetail = { code: 'check-refused', params: {} };
 
 /** Les noms (identifiants d'au moins trois caractères) que les instructions envoyées écrivent elles-mêmes. */
 function ownNames(sent: readonly string[]): ReadonlySet<string> {
@@ -450,16 +471,16 @@ const isOwnName = (quoted: string, own: ReadonlySet<string>): boolean =>
  * - `column "<nom>" could not be found in any table in scope` : la colonne manque de même ;
  * - toute autre cause : `READ_REFUSED`.
  */
-const READ_REFUSED = "Dolt a refusé une lecture de l'app : le texte de son erreur n'est pas repris (il pourrait citer ce que la base lui fait lire).";
+const READ_REFUSED: ProjectReasonDetail = { code: 'read-refused', params: {} };
 const MISSING_TABLE = /: table not found: (\S+)\s*$/;
 const MISSING_COLUMN = /: column "([^"]+)" could not be found in any table in scope\s*$/;
 
 function readFailure(err: DoltQueryError, sent: readonly string[]): DoltQueryError {
   const own = ownNames(sent);
   const table = MISSING_TABLE.exec(err.message)?.[1];
-  if (table !== undefined && isOwnName(table, own)) return new DoltQueryError(`Dolt ne trouve pas la table ${named(table)} que l'app lit.`, err.dir, err.locked);
+  if (table !== undefined && isOwnName(table, own)) return new DoltQueryError({ code: 'missing-table', params: { name: safeName(table) } }, err.dir, err.locked);
   const column = MISSING_COLUMN.exec(err.message)?.[1];
-  if (column !== undefined && isOwnName(column, own)) return new DoltQueryError(`Dolt ne trouve pas la colonne ${named(column)} que l'app lit.`, err.dir, err.locked);
+  if (column !== undefined && isOwnName(column, own)) return new DoltQueryError({ code: 'missing-column', params: { name: safeName(column) } }, err.dir, err.locked);
   return new DoltQueryError(READ_REFUSED, err.dir, err.locked);
 }
 
@@ -487,10 +508,10 @@ function guarded(err: DoltQueryError, sent: readonly string[], checkLength: numb
  * round 4, m4). `guarded` ne remplaçait que celui qui a la forme « error on line N for query » ; un verrou, une permission refusée, un plantage, ou `illegal base64 data at input byte N` quand la
  * requête n'est pas citée, passaient tels quels dans la raison d'un Projet illisible. Un message fixe par classe de cause ; une classe de plus n'a rien à gagner à citer ce que Dolt écrit.
  */
-const DOLT_LOCKED = 'La base est tenue par un autre processus dolt : réessayez dans un instant.';
-const DOLT_PERMISSION = 'Dolt ne peut pas ouvrir les fichiers de la base : permission refusée.';
-const DOLT_UNREADABLE = 'La sortie de dolt est illisible.';
-const DOLT_FAILED = "Dolt n'a pas pu lire la base : le texte de son erreur n'est pas repris (il pourrait citer ce que la base lui fait lire).";
+const DOLT_LOCKED: ProjectReasonDetail = { code: 'dolt-locked', params: {} };
+const DOLT_PERMISSION: ProjectReasonDetail = { code: 'dolt-permission-denied', params: {} };
+const DOLT_UNREADABLE: ProjectReasonDetail = { code: 'dolt-unreadable-output', params: {} };
+const DOLT_FAILED: ProjectReasonDetail = { code: 'dolt-failed', params: {} };
 
 /**
  * L'erreur qui sort du client vérifié : celle du client elle-même, sauf un texte de Dolt, remplacé par le message fixe de sa classe (le verrou garde son drapeau `locked`). Le texte n'est ni
@@ -537,7 +558,7 @@ export function withStoredSqlCheck(client: DoltClient): DoltClient {
       // Avec le nom de la base, que la révision du commit de base (`<base>/<commit>`) demande plus bas.
       const [roots = [], names = []] = await queryAll(db, [STORED_ROOT_COMMIT, 'select database() as name'], options);
       const root = text(roots[0]?.commit_hash);
-      if (!root) throw new DoltQueryError(`Aucun commit dans ${db.dir} : ce que ${NONLOCAL_TABLE} porte ne peut pas se vérifier.`, db.dir);
+      if (!root) throw new DoltQueryError({ code: 'no-commit', params: { path: db.dir } }, db.dir);
       const present = await queryAll(db, [storedNonlocalProbe(root)], options).then(
         () => true,
         (err: unknown) => {
@@ -545,10 +566,10 @@ export function withStoredSqlCheck(client: DoltClient): DoltClient {
           throw err;
         },
       );
-      if (present) throw new StoredSqlError([`${named(NONLOCAL_TABLE)} existe déjà dans le premier commit : sans commit où elle manque, on ne peut pas dire qu'elle est vide`], db.dir);
+      if (present) throw new StoredSqlError([{ kind: 'nonlocal-in-first-commit' }], db.dir);
       // Round 4 : un commit de base qui a déjà des tables ne dit rien de celles que HEAD n'a pas changées depuis (voir `STORED_ROOT_COMMIT`) : le `CREATE TABLE` de celles-là ne serait jamais jugé.
       const [inBase = []] = await queryAll(db, [revisionTablesSql(sqlIdent(`${text(names[0]?.name)}/${root}`))], options);
-      if (inBase.length > 0) throw new StoredSqlError(inBase.map((row) => `${named(tableName(row))} existe déjà dans le premier commit : sans commit où elle manque, on ne peut pas juger son CREATE TABLE`), db.dir);
+      if (inBase.length > 0) throw new StoredSqlError(inBase.map((row): StoredSqlObject => ({ kind: 'table-in-first-commit', name: safeName(tableName(row)) })), db.dir);
       bases.set(db.dir, root);
       return root;
     } catch (err) {
@@ -657,11 +678,11 @@ export function withStoredSqlCheck(client: DoltClient): DoltClient {
     const atHead = await headColumns(db, base, options);
     if (!atHead) return; // une vue est arrivée, ou HEAD a changé : la lecture reprend, et son assertion le dira
     const problems = [
-      ...atHead.columns.flatMap(({ table, rows }) => rows.filter((row) => isGenerated(row.Extra)).map((row) => `${columnProblem(table, text(row.Field))} (dans HEAD)`)),
-      ...schemaCreateProblems(atHead.schema, ' (dans HEAD)'),
+      ...atHead.columns.flatMap(({ table, rows }) => rows.filter((row) => isGenerated(row.Extra)).map((row) => columnProblem(table, text(row.Field), HEAD))),
+      ...schemaCreateProblems(atHead.schema, HEAD),
     ];
     if (problems.length > 0) throw new StoredSqlError(problems, db.dir);
-    if (!atHead.head) throw new DoltQueryError(`HEAD illisible dans ${db.dir}`, db.dir);
+    if (!atHead.head) throw new DoltQueryError({ code: 'head-unreadable', params: { path: db.dir } }, db.dir);
     pinned.set(db.dir, atHead.head);
   }
 
@@ -698,7 +719,7 @@ export function withStoredSqlCheck(client: DoltClient): DoltClient {
         // B-FI (bdesk-38k.74, round 3) : le `CREATE TABLE` de chaque table, les deux derniers relevés du groupe quand `base` est connu (`schemaProbe`). Dolt ne s'arrête pas pour eux
         // (ce ne sont pas des assertions qui lèvent) : la lecture a déjà pu s'exécuter. Ses lignes ne sont donc rendues qu'une fois ce relevé jugé propre ; sinon, elles sont jetées.
         if (base !== undefined) {
-          const problems = [...schemaCreateProblems(results[prelude.length - 2] ?? []), ...schemaCreateProblems(results[prelude.length - 1] ?? [], ' (dans HEAD)')];
+          const problems = [...schemaCreateProblems(results[prelude.length - 2] ?? []), ...schemaCreateProblems(results[prelude.length - 1] ?? [], HEAD)];
           if (problems.length > 0) throw new StoredSqlError(problems, db.dir);
         }
         return results.slice(prelude.length);
@@ -726,10 +747,10 @@ export function withStoredSqlCheck(client: DoltClient): DoltClient {
    * garde le reste. **Pas `show create table <révision>.dependencies`** : le garde de lecture seule refuse `create` et `table` comme mots nus, où qu'ils s'écrivent (`FORBIDDEN_WORDS`,
    * `read-only.ts`) — `SHOW CREATE TABLE` en est une lecture pour Dolt, mais pas pour ce garde, qui ne distingue pas le contexte. `dolt_schema_diff` n'écrit ni l'un ni l'autre.
    */
-  async function nonlocalAt(db: DoltDatabase, commit: string, options: QueryOptions | undefined): Promise<string[]> {
-    if (!COMMIT_HASH.test(commit)) throw new DoltQueryError(`Commit d'époque illisible dans ${db.dir}`, db.dir);
+  async function nonlocalAt(db: DoltDatabase, commit: string, options: QueryOptions | undefined): Promise<StoredSqlObject[]> {
+    if (!COMMIT_HASH.test(commit)) throw new DoltQueryError({ code: 'era-commit-unreadable', params: { path: db.dir } }, db.dir);
     const base = bases.get(db.dir) ?? (await learnOnce(db, options?.lane));
-    const where = ` (époque du commit ${commit.slice(0, 8)})`;
+    const where: StoredSqlPlace = { in: 'era', commit: commit.slice(0, 8) };
     const [nonlocalRows = [], schemaRows = []] = await checked(db, [nonlocalCount(base, commit), schemaCreateSql(base, commit)], options);
     const nonlocal = String(nonlocalRows[0]?.c ?? '0') === '0' ? [] : [nonlocalProblem(where)];
     return [...nonlocal, ...schemaCreateProblems(schemaRows, where, ERA_REQUIRED)];

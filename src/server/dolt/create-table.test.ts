@@ -99,26 +99,26 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['dolt_history_issues (CHARACTER SET / COLLATE par colonne)', SYSTEM_DOLT_HISTORY_ISSUES_TAIL],
       ['dolt_schemas', SYSTEM_DOLT_SCHEMAS],
     ])('%s', (_label, sql) => {
-      expect(createTableProblems(sql, 'x')).toEqual([]);
+      expect(createTableProblems(sql)).toEqual([]);
     });
 
     it('un CREATE TABLE avec point-virgule final (dolt_schema_diff.to_create_statement)', () => {
-      expect(createTableProblems(`${REAL_CONFIG};`, 'x')).toEqual([]);
+      expect(createTableProblems(`${REAL_CONFIG};`)).toEqual([]);
     });
 
     it('une apostrophe dans une valeur par défaut, doublée comme Dolt l’écrit', () => {
       const sql = "CREATE TABLE `t` (`a` varchar(20) DEFAULT 'it''s a test') ENGINE=InnoDB";
-      expect(createTableProblems(sql, 'x')).toEqual([]);
+      expect(createTableProblems(sql)).toEqual([]);
     });
 
     it('une colonne nullable sans aucun défaut', () => {
-      expect(createTableProblems('CREATE TABLE `t` (`a` varchar(20)) ENGINE=InnoDB', 'x')).toEqual([]);
+      expect(createTableProblems('CREATE TABLE `t` (`a` varchar(20)) ENGINE=InnoDB')).toEqual([]);
     });
 
     // Mesuré : Dolt range ainsi un défaut littéral ordinaire après certains `alter table` (bdesk-38k.74, round 3, B-FI : un index fonctionnel ajouté puis retiré d'une table qui a des lignes).
     it('une chaîne ou un nombre entre parenthèses comme défaut (ce que Dolt écrit après certains ALTER TABLE)', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` varchar(32) NOT NULL DEFAULT ('blocks')) ENGINE=InnoDB", 'x')).toEqual([]);
-      expect(createTableProblems("CREATE TABLE `t` (`a` int DEFAULT (2)) ENGINE=InnoDB", 'x')).toEqual([]);
+      expect(createTableProblems("CREATE TABLE `t` (`a` varchar(32) NOT NULL DEFAULT ('blocks')) ENGINE=InnoDB")).toEqual([]);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int DEFAULT (2)) ENGINE=InnoDB")).toEqual([]);
     });
 
     // Mesuré à l'ancre d'une époque (le dernier commit d'avant la migration 0041 de bd) de trois copies de Projets réels : `comments.id` a `DEFAULT (uuid())`, et les dates
@@ -127,23 +127,22 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       const old =
         "CREATE TABLE `comments` (\n  `id` char(36) NOT NULL DEFAULT (uuid()),\n  `issue_id` varchar(255) NOT NULL,\n  `created_at` datetime NOT NULL DEFAULT 'CURRENT_TIMESTAMP',\n  PRIMARY KEY (`id`),\n" +
         "  KEY `idx_comments_created_at` (`created_at`),\n  CONSTRAINT `fk_comments_issue` FOREIGN KEY (`issue_id`) REFERENCES `issues` (`id`) ON DELETE CASCADE\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin;";
-      expect(createTableProblems(old, 'comments')).toEqual([]);
+      expect(createTableProblems(old)).toEqual([]);
     });
 
     it.each(['CASCADE', 'RESTRICT', 'SET NULL', 'NO ACTION', 'SET DEFAULT'])('une clé étrangère `ON DELETE %s` (les cinq actions de MySQL, lues d’un seul tenant)', (action) => {
-      expect(createTableProblems(`CREATE TABLE \`t\` (\`a\` int, CONSTRAINT \`f\` FOREIGN KEY (\`a\`) REFERENCES \`u\` (\`id\`) ON DELETE ${action} ON UPDATE ${action}) ENGINE=InnoDB`, 'x')).toEqual([]);
+      expect(createTableProblems(`CREATE TABLE \`t\` (\`a\` int, CONSTRAINT \`f\` FOREIGN KEY (\`a\`) REFERENCES \`u\` (\`id\`) ON DELETE ${action} ON UPDATE ${action}) ENGINE=InnoDB`)).toEqual([]);
     });
   });
 
   describe('refusé : une vue ou autre chose qu’une table', () => {
     it.each([
-      ['CREATE VIEW', "CREATE VIEW `ready_issues` AS select id, title from issues where status = 'open'"],
-      ['texte vide', ''],
-      ['charabia', 'n’importe quoi'],
-    ])('%s', (_label, sql) => {
-      const problems = createTableProblems(sql, 'x');
-      expect(problems).toHaveLength(1);
-      expect(problems[0]).not.toContain(sql.slice(0, 5) || 'rien'); // le texte original n'est jamais repris tel quel (sauf chevauchement trivial impossible ici)
+      ['CREATE VIEW', "CREATE VIEW `ready_issues` AS select id, title from issues where status = 'open'", 'not-a-table'],
+      ['texte vide', '', 'not-a-table'],
+      ['charabia', 'n’importe quoi', 'unrecognized-definition'],
+    ])('%s', (_label, sql, kind) => {
+      // Une sorte, jamais le texte original : rien de la définition ne peut passer dans la raison.
+      expect(createTableProblems(sql)).toEqual([kind]);
     });
   });
 
@@ -152,10 +151,7 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['virtual', "CREATE TABLE `t` (`a` varchar(500) GENERATED ALWAYS AS (load_file('/x')) VIRTUAL) ENGINE=InnoDB"],
       ['stored', "CREATE TABLE `t` (`a` varchar(500) GENERATED ALWAYS AS (load_file('/x')) STORED) ENGINE=InnoDB"],
     ])('%s', (_label, sql) => {
-      const problems = createTableProblems(sql, 'labels');
-      expect(problems).toHaveLength(1);
-      expect(problems[0]).not.toContain('load_file');
-      expect(problems[0]).not.toContain('/x');
+      expect(createTableProblems(sql)).toEqual(['not-admitted']);
     });
   });
 
@@ -164,9 +160,7 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['sleep', "CREATE TABLE `labels` (`issue_id` varchar(255) NOT NULL, PRIMARY KEY (`issue_id`), KEY `fi` ((sleep(3)))) ENGINE=InnoDB"],
       ['from_base64/load_file (l’oracle du round 3)', "CREATE TABLE `labels` (`issue_id` varchar(255) NOT NULL, PRIMARY KEY (`issue_id`), KEY `fi` ((from_base64(load_file('/private/x/canary.txt'))))) ENGINE=InnoDB"],
     ])('%s', (_label, sql) => {
-      const problems = createTableProblems(sql, 'labels');
-      expect(problems).toHaveLength(1);
-      expect(problems[0]).not.toMatch(/sleep|from_base64|load_file|canary/i);
+      expect(createTableProblems(sql)).toEqual(['not-admitted']);
     });
   });
 
@@ -189,7 +183,7 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['un nom de colonne entre parenthèses', "CREATE TABLE `t` (`a` int, `b` int DEFAULT (`a`)) ENGINE=InnoDB"],
       ['des parenthèses doubles autour d’un littéral', "CREATE TABLE `t` (`a` int DEFAULT ((2))) ENGINE=InnoDB"],
     ])('%s', (_label, sql) => {
-      expect(createTableProblems(sql, 'x')).toHaveLength(1);
+      expect(createTableProblems(sql)).toHaveLength(1);
     });
   });
 
@@ -199,7 +193,7 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['un mot de trop dans les options', "CREATE TABLE `t` (`a` int) ENGINE=InnoDB EVIL"],
       ['une option dont la valeur est une expression', "CREATE TABLE `t` (`a` int) ENGINE=InnoDB COMMENT=(select 1)"],
     ])('%s', (_label, sql) => {
-      expect(createTableProblems(sql, 'x')).toHaveLength(1);
+      expect(createTableProblems(sql)).toHaveLength(1);
     });
   });
 
@@ -207,7 +201,7 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
     it('ce qui le suit est refusé par la lecture des options elle-même, avant toute autre vérification : la raison le dit', () => {
       const sql = "CREATE TABLE `t` (`a` int) ENGINE=InnoDB; CREATE VIEW `v` AS select 1";
 
-      expect(createTableProblems(sql, 'x')).toEqual(['x : construction non reconnue dans les options de la table']);
+      expect(createTableProblems(sql)).toEqual(['unrecognized-options']);
     });
   });
 
@@ -218,7 +212,7 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['une clé étrangère dont l’action n’est pas l’une des cinq', "CREATE TABLE `t` (`a` int, CONSTRAINT `f` FOREIGN KEY (`a`) REFERENCES `u` (`id`) ON DELETE EVAL) ENGINE=InnoDB"],
       ['un mot inconnu en tête de membre', "CREATE TABLE `t` (`a` int, FULLTEXT KEY `x` (`a`)) ENGINE=InnoDB"],
     ])('%s', (_label, sql) => {
-      expect(createTableProblems(sql, 'x')).toHaveLength(1);
+      expect(createTableProblems(sql)).toHaveLength(1);
     });
   });
 
@@ -228,60 +222,60 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['une chaîne', "CREATE TABLE `t` (`a` varchar(10), CONSTRAINT `c` CHECK (`a` = 'x')) ENGINE=InnoDB"],
       ['un nom qualifié (table.colonne)', "CREATE TABLE `t` (`a` int, CONSTRAINT `c` CHECK (`t`.`a` = 1)) ENGINE=InnoDB"],
     ])('%s', (_label, sql) => {
-      expect(createTableProblems(sql, 'x')).toHaveLength(1);
+      expect(createTableProblems(sql)).toHaveLength(1);
     });
   });
 
   describe('la forme exacte du check de bd, et de légères variations, pour cerner la grammaire', () => {
     it('admis : la forme réelle', () => {
       const sql = "CREATE TABLE `t` (`a` varchar(10), `b` varchar(10), CONSTRAINT `c` CHECK (((NOT(`a` IS NULL)) + (NOT(`b` IS NULL))) = 1)) ENGINE=InnoDB";
-      expect(createTableProblems(sql, 'x')).toEqual([]);
+      expect(createTableProblems(sql)).toEqual([]);
     });
     it('admis : une comparaison simple sur une colonne', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` int, CONSTRAINT `c` CHECK (`a` > 0)) ENGINE=InnoDB", 'x')).toEqual([]);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int, CONSTRAINT `c` CHECK (`a` > 0)) ENGINE=InnoDB")).toEqual([]);
     });
     it('admis : OR et IS NOT NULL', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` int, `b` int, CONSTRAINT `c` CHECK (`a` IS NOT NULL OR `b` IS NULL)) ENGINE=InnoDB", 'x')).toEqual([]);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int, `b` int, CONSTRAINT `c` CHECK (`a` IS NOT NULL OR `b` IS NULL)) ENGINE=InnoDB")).toEqual([]);
     });
   });
 
   describe('refusé : un index fonctionnel ou une colonne générée atteints par un autre chemin que les cas ci-dessus', () => {
     it('une clé dont un membre est entre parenthèses sans backtick (forme générale d’un index fonctionnel)', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` int, KEY `k` ((`a` + 1))) ENGINE=InnoDB", 'x')).toHaveLength(1);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int, KEY `k` ((`a` + 1))) ENGINE=InnoDB")).toHaveLength(1);
     });
     it('un mot-clé GENERATED au milieu d’une colonne par ailleurs ordinaire', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` int GENERATED ALWAYS AS (1) VIRTUAL) ENGINE=InnoDB", 'x')).toHaveLength(1);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int GENERATED ALWAYS AS (1) VIRTUAL) ENGINE=InnoDB")).toHaveLength(1);
     });
     it('une clé étrangère qui référence un appel de fonction plutôt qu’une table', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` int, CONSTRAINT `c` FOREIGN KEY (`a`) REFERENCES sleep(1) (`a`)) ENGINE=InnoDB", 'x')).toHaveLength(1);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int, CONSTRAINT `c` FOREIGN KEY (`a`) REFERENCES sleep(1) (`a`)) ENGINE=InnoDB")).toHaveLength(1);
     });
     it('un index fonctionnel qui se fait passer pour une longueur de préfixe', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` varchar(10), KEY `k` (`a`(sleep(1)))) ENGINE=InnoDB", 'x')).toHaveLength(1);
+      expect(createTableProblems("CREATE TABLE `t` (`a` varchar(10), KEY `k` (`a`(sleep(1)))) ENGINE=InnoDB")).toHaveLength(1);
     });
     it('une sous-requête dans un check', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` int, CONSTRAINT `c` CHECK (`a` IN (SELECT 1))) ENGINE=InnoDB", 'x')).toHaveLength(1);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int, CONSTRAINT `c` CHECK (`a` IN (SELECT 1))) ENGINE=InnoDB")).toHaveLength(1);
     });
   });
 
   describe('admis : des formes un peu différentes, toujours dans la grammaire', () => {
     it('un type sans aucune précision (int tout nu)', () => {
-      expect(createTableProblems('CREATE TABLE `t` (`a` int, PRIMARY KEY (`a`)) ENGINE=InnoDB', 'x')).toEqual([]);
+      expect(createTableProblems('CREATE TABLE `t` (`a` int, PRIMARY KEY (`a`)) ENGINE=InnoDB')).toEqual([]);
     });
     it('UNIQUE sans nom', () => {
-      expect(createTableProblems('CREATE TABLE `t` (`a` int, UNIQUE (`a`)) ENGINE=InnoDB', 'x')).toEqual([]);
+      expect(createTableProblems('CREATE TABLE `t` (`a` int, UNIQUE (`a`)) ENGINE=InnoDB')).toEqual([]);
     });
     it('une longueur de préfixe sur une clé ordinaire', () => {
-      expect(createTableProblems('CREATE TABLE `t` (`a` varchar(255), KEY `k` (`a`(10))) ENGINE=InnoDB', 'x')).toEqual([]);
+      expect(createTableProblems('CREATE TABLE `t` (`a` varchar(255), KEY `k` (`a`(10))) ENGINE=InnoDB')).toEqual([]);
     });
     it('plusieurs AND/OR dans un check, avec des nombres négatifs', () => {
-      expect(createTableProblems("CREATE TABLE `t` (`a` int, `b` int, CONSTRAINT `c` CHECK ((`a` > -1 AND `b` < 5) OR `a` = 0)) ENGINE=InnoDB", 'x')).toEqual([]);
+      expect(createTableProblems("CREATE TABLE `t` (`a` int, `b` int, CONSTRAINT `c` CHECK ((`a` > -1 AND `b` < 5) OR `a` = 0)) ENGINE=InnoDB")).toEqual([]);
     });
   });
 
   // bdesk-38k.74, relecture finale, round 4, m1. Dolt accepte un `check` de vingt mille `not` à la suite et l'écrit en quelque quarante mille parenthèses imbriquées : l'analyseur descend par
   // récursion, et la pile débordait (« Maximum call stack size exceeded »). Le refus doit être celui de la grammaire, jamais une exception.
   describe('l’imbrication d’un check est bornée : une limite explicite, le refus générique au-delà', () => {
-    const GENERIC = 'x : colonne générée, index fonctionnel, ou autre construction non admise';
+    const GENERIC = 'not-admitted';
     const withCheck = (expression: string) => `CREATE TABLE \`t\` (\`a\` int, CONSTRAINT \`c\` CHECK (${expression})) ENGINE=InnoDB`;
     /** `depth` parenthèses ouvertes autour de `a > 0`, comme Dolt les écrit. */
     const nestedParentheses = (depth: number) => `${'('.repeat(depth)}\`a\` > 0${')'.repeat(depth)}`;
@@ -294,52 +288,55 @@ describe('createTableProblems (bdesk-38k.74, round 3, B-FI : liste fermée pour 
       ['quarante mille parenthèses imbriquées', withCheck(nestedParentheses(40_000))],
       ['des NOT et des parenthèses mêlés', withCheck(`${'(NOT '.repeat(10_000)}\`a\` IS NULL${')'.repeat(10_000)}`)],
     ])('%s : refusé par la grammaire, sans exception', (_label, sql) => {
-      expect(() => createTableProblems(sql, 'x')).not.toThrow();
-      expect(createTableProblems(sql, 'x')).toEqual([GENERIC]);
+      expect(() => createTableProblems(sql)).not.toThrow();
+      expect(createTableProblems(sql)).toEqual([GENERIC]);
     });
 
     it('la limite elle-même : MAX_CHECK_DEPTH parenthèses sont admises, une de plus est refusée', () => {
-      expect(createTableProblems(withCheck(nestedParentheses(MAX_CHECK_DEPTH)), 'x')).toEqual([]);
-      expect(createTableProblems(withCheck(nestedParentheses(MAX_CHECK_DEPTH + 1)), 'x')).toEqual([GENERIC]);
+      expect(createTableProblems(withCheck(nestedParentheses(MAX_CHECK_DEPTH)))).toEqual([]);
+      expect(createTableProblems(withCheck(nestedParentheses(MAX_CHECK_DEPTH + 1)))).toEqual([GENERIC]);
     });
 
     it('la limite compte aussi les NOT : MAX_CHECK_DEPTH NOT nus sont admis, un de plus est refusé', () => {
       const nots = (count: number) => withCheck(`${'NOT '.repeat(count)}\`a\` IS NULL`);
 
-      expect(createTableProblems(nots(MAX_CHECK_DEPTH), 'x')).toEqual([]);
-      expect(createTableProblems(nots(MAX_CHECK_DEPTH + 1), 'x')).toEqual([GENERIC]);
+      expect(createTableProblems(nots(MAX_CHECK_DEPTH))).toEqual([]);
+      expect(createTableProblems(nots(MAX_CHECK_DEPTH + 1))).toEqual([GENERIC]);
     });
 
     it('les parenthèses et les NOT se cumulent : la moitié de chaque, au total à la limite, passe ; un NOT de plus, non', () => {
       const half = MAX_CHECK_DEPTH / 2;
       const mixed = (nots: number) => withCheck(`${'('.repeat(half)}${'NOT '.repeat(nots)}\`a\` IS NULL${')'.repeat(half)}`);
 
-      expect(createTableProblems(mixed(half), 'x')).toEqual([]);
-      expect(createTableProblems(mixed(half + 1), 'x')).toEqual([GENERIC]);
+      expect(createTableProblems(mixed(half))).toEqual([]);
+      expect(createTableProblems(mixed(half + 1))).toEqual([GENERIC]);
     });
 
     it('la forme que bd pose (six niveaux) est admise, bien en deçà de la limite', () => {
       expect(MAX_CHECK_DEPTH).toBeGreaterThan(6 * 4);
-      expect(createTableProblems(`CREATE TABLE \`t\` (\`a\` int, \`b\` int, \`c\` int, CONSTRAINT \`ck\` CHECK (((((NOT(\`a\` IS NULL)) + (NOT(\`b\` IS NULL))) + (NOT(\`c\` IS NULL))) = 1))) ENGINE=InnoDB`, 'x')).toEqual([]);
+      expect(createTableProblems(`CREATE TABLE \`t\` (\`a\` int, \`b\` int, \`c\` int, CONSTRAINT \`ck\` CHECK (((((NOT(\`a\` IS NULL)) + (NOT(\`b\` IS NULL))) + (NOT(\`c\` IS NULL))) = 1))) ENGINE=InnoDB`)).toEqual([]);
     });
 
     it('des parenthèses côte à côte ne s’imbriquent pas : deux cents termes reliés par AND sont admis, la profondeur étant rendue à chaque fermeture', () => {
       const siblings = Array.from({ length: 200 }, () => '(`a` > 0)').join(' AND ');
 
-      expect(createTableProblems(withCheck(siblings), 'x')).toEqual([]);
+      expect(createTableProblems(withCheck(siblings))).toEqual([]);
     });
 
     it('un check qui échoue en profondeur ne laisse pas la profondeur ouverte : le suivant, dans une autre table, est jugé comme neuf', () => {
-      createTableProblems(withCheck(nestedParentheses(MAX_CHECK_DEPTH + 10)), 'x');
+      createTableProblems(withCheck(nestedParentheses(MAX_CHECK_DEPTH + 10)));
 
-      expect(createTableProblems(withCheck(nestedParentheses(3)), 'x')).toEqual([]);
+      expect(createTableProblems(withCheck(nestedParentheses(3)))).toEqual([]);
     });
   });
 
-  describe('le problème nomme la table, jamais le contenu de la base', () => {
-    it('le nom donné (label) apparaît dans le problème', () => {
-      const problems = createTableProblems("CREATE TABLE `t` (`a` int, KEY `fi` ((sleep(3)))) ENGINE=InnoDB", 'labels (dans HEAD)');
-      expect(problems[0]).toContain('labels (dans HEAD)');
+  describe('le problème est une sorte, jamais le contenu de la base : `stored-sql.ts` y ajoute le nom de la table et sa racine', () => {
+    it('un index fonctionnel : une construction non admise', () => {
+      expect(createTableProblems("CREATE TABLE `t` (`a` int, KEY `fi` ((sleep(3)))) ENGINE=InnoDB")).toEqual(['not-admitted']);
+    });
+
+    it('une vue : autre chose qu’une table', () => {
+      expect(createTableProblems('CREATE VIEW `v` AS select 1')).toEqual(['not-a-table']);
     });
   });
 });

@@ -152,6 +152,28 @@ describe('rescans provoqués par un Projet inconnu ou illisible', () => {
   });
 });
 
+// bdesk-ewr.8 : la cause codée d'un Projet illisible au scan suit la raison française, dans la liste (200) comme dans le 503 de sa lecture.
+describe('la cause codée d’un Projet illisible au scan', () => {
+  const reason = 'Base Dolt introuvable (.beads/embeddeddolt/casse).';
+  const reasonDetail = { code: 'database-not-found', params: { folder: '.beads/embeddeddolt', path: '.beads/embeddeddolt/casse' } };
+
+  beforeEach(() => project('casse', { database: false }));
+
+  it('la liste porte la raison et sa cause', async () => {
+    const { projects } = await serviceFor(fakeDolt()).list();
+
+    expect(projects[0]).toMatchObject({ id: 'casse', status: 'unreadable', reason, reasonDetail });
+  });
+
+  it('sa lecture rejette avec la même raison et la même cause, que le 503 porte dans ses paramètres', async () => {
+    const error = await serviceFor(fakeDolt()).issues('casse').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ProjectUnreadableError);
+    expect(error).toMatchObject({ reason, reasonDetail });
+    expect((error as ProjectUnreadableError).detail).toEqual({ code: 'project-unreadable', params: { reason, reasonDetail } });
+  });
+});
+
 describe('erreurs de lecture', () => {
   it('signale un Projet illisible, avec la raison, quand une date de la base est invalide', async () => {
     project('a');
@@ -164,7 +186,13 @@ describe('erreurs de lecture', () => {
     const error = await serviceFor(dolt).issues('a').catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ProjectUnreadableError);
-    expect((error as ProjectUnreadableError).reason).toContain('Date Dolt invalide');
+    expect((error as ProjectUnreadableError).reason).toBe('Date Dolt invalide : pas une date');
+    // bdesk-ewr.8 : la cause codée de la raison, que le 503 porte dans ses paramètres.
+    expect((error as ProjectUnreadableError).reasonDetail).toEqual({ code: 'invalid-date', params: { value: 'pas une date' } });
+    expect((error as ProjectUnreadableError).detail).toEqual({
+      code: 'project-unreadable',
+      params: { reason: 'Date Dolt invalide : pas une date', reasonDetail: { code: 'invalid-date', params: { value: 'pas une date' } } },
+    });
   });
 
   it('répond 503 avec la raison, et non 500, quand une date de la base est invalide', async () => {

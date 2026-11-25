@@ -863,14 +863,14 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
         query: async () => [],
         storedSqlAt: async (commit, queryOptions) => {
           asked.push({ commit, options: queryOptions });
-          return ['une raison'];
+          return [{ kind: 'nonlocal-in-first-commit' }];
         },
       };
       const signal = new AbortController().signal;
 
       const scoped = withOptions(checked, { signal, lane: 'analysis' });
 
-      expect(await scoped.storedSqlAt?.('abc', { lane: 'light' })).toEqual(['une raison']);
+      expect(await scoped.storedSqlAt?.('abc', { lane: 'light' })).toEqual([{ kind: 'nonlocal-in-first-commit' }]);
       expect(asked).toEqual([{ commit: 'abc', options: { signal, lane: 'light' } }]);
       expect(withOptions({ dir: '/projet', query: async () => [] }, { signal }).storedSqlAt).toBeUndefined();
     });

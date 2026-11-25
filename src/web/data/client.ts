@@ -1,7 +1,7 @@
 import { readApiErrorDetail } from '../../shared/errors';
 import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
-import { ApiError, errorText } from './apiError';
+import { ApiError, errorText, unreadableReason } from './apiError';
 
 export { ApiError, errorText } from './apiError';
 
@@ -49,7 +49,8 @@ export interface ErrorDescription {
 
 /**
  * Titre et détail affichables d'une erreur de chargement, dans la langue de l'interface. Le détail passe par `errorText` : la phrase du catalogue pour une
- * erreur que l'API a codée, sinon le message tel que le serveur l'envoie (une raison de Projet illisible, le message d'une erreur), qui n'est pas traduit.
+ * erreur que l'API a codée, sinon le message tel que le serveur l'envoie, qui n'est pas traduit. Celui d'un Projet illisible est sa raison, écrite par
+ * `projectReasonText` : la phrase de sa cause, ou la raison française du serveur quand l'interface ne connaît pas sa cause.
  */
 export function describeError(error: unknown, language: Language): ErrorDescription {
   const t = CATALOGS[language].shell.loadErrors;
@@ -57,10 +58,9 @@ export function describeError(error: unknown, language: Language): ErrorDescript
     if (error.status === 0) {
       return { title: t.unreachable, detail: t.unreachableDetail };
     }
-    // Un 503 avec raison, c'est un Projet que le serveur n'arrive pas à lire (base verrouillée, absente…).
-    if (error.status === 503 && error.reason) {
-      return { title: t.unreadableProject, detail: error.reason, specific: true };
-    }
+    // Un 503 avec raison, c'est un Projet que le serveur n'arrive pas à lire (base verrouillée, absente…) : la raison, dans la langue.
+    const reason = unreadableReason(error, language);
+    if (reason !== undefined) return { title: t.unreadableProject, detail: reason, specific: true };
     const detail = errorText(error, language);
     if (error.status >= 500) return { title: t.serverError, detail };
     if (error.status === 404) return { title: t.notFound, detail };

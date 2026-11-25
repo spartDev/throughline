@@ -731,7 +731,7 @@ describe('API des métriques', () => {
 
       expect(res.statusCode, query).toBe(200);
       expect(res.json<MetricsResponse>().unreadable, query).toEqual([
-        { id: 'vanishing', name: 'vanishing', reason: expect.stringContaining('disparu') },
+        { id: 'vanishing', name: 'vanishing', reason: expect.stringContaining('disparu'), reasonDetail: { code: 'project-vanished', params: {} } },
       ]);
     }
     // Un identifiant que la liste ne connaissait pas reste un 404.
@@ -1032,6 +1032,27 @@ describe('API : codes d’erreur (bdesk-ewr.6)', () => {
     });
     expectParamsWithinMessage(body);
     expect(res.body).not.toContain('secret');
+  });
+
+  it('503 pour un Projet illisible dont la cause est codée (bdesk-ewr.8) : `reasonDetail` à côté de `reason`, d’où l’interface écrit la raison dans sa langue', async () => {
+    const unreadable = async () => {
+      throw new ProjectUnreadableError('beads-desktop', LOCKED, { code: 'dolt-locked', params: {} });
+    };
+    const res = await ask('/api/projects/beads-desktop/issues', serviceWith({ issues: unreadable }));
+
+    expect(res.statusCode).toBe(503);
+    const body = res.json();
+    expect(body).toEqual({
+      statusCode: 503,
+      error: 'Service Unavailable',
+      message: `Projet illisible : ${LOCKED}`,
+      code: 'project-unreadable',
+      params: { reason: LOCKED, reasonDetail: { code: 'dolt-locked', params: {} } },
+      reason: LOCKED,
+    });
+    const shown = new ApiError(body.message, 503, { reason: body.reason, detail: readApiErrorDetail(body.code, body.params) });
+    expect(errorText(shown, 'fr')).toBe(body.message);
+    expect(errorText(shown, 'en')).toBe('Unreadable Project: The database is held by another dolt process: try again in a moment.');
   });
 
   it('500 : le message générique a son code ; un message que l’API n’a pas écrit n’en a pas', async () => {

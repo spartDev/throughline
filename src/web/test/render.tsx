@@ -158,10 +158,12 @@ export function stubApi({ projects, issues = {}, details = {}, chronologies = {}
     const measured = selected.filter((project) => project.status === 'ok' && !isFailure(signals[project.id]));
     const unreadable = selected
       .filter((project) => !measured.includes(project))
-      .map(({ id, name, reason }) => {
+      .map(({ id, name, reason, reasonDetail }) => {
         const failure = signals[id];
         const message = isFailure(failure) ? (failure.body as { message?: string }).message : undefined;
-        return { id, name, reason: message ?? reason ?? 'Projet illisible.' };
+        if (message !== undefined) return { id, name, reason: message };
+        // La raison du Projet, et sa cause codée quand il en a une (bdesk-ewr.8), comme le serveur.
+        return reasonDetail === undefined ? { id, name, reason: reason ?? 'Projet illisible.' } : { id, name, reason: reason ?? 'Projet illisible.', reasonDetail };
       });
     return json({
       generatedAt: new Date().toISOString(),
