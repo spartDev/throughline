@@ -6,7 +6,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../domain/calendar';
 import type { TicketHistory } from '../domain/flow';
-import type { DeclaredStatuses, Issue, IssueDetail, MetricsResponse, Project, SinceLastVisitResponse } from '../shared/api';
+import type { DeclaredStatuses, Issue, IssueDetail, MetricsResponse, Project, SignalsResponse, SinceLastVisitResponse } from '../shared/api';
 import { readApiErrorDetail } from '../shared/errors';
 import { ApiError, errorText } from '../web/data/apiError';
 import { ReadAborted } from './abort';
@@ -395,6 +395,24 @@ describe('API des Signaux', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().signals).toEqual([{ kind: 'stalledFlow', project: 'beads-desktop', ready: 3, since: ago(1).toISOString(), duration: DAY }]);
+  });
+
+  it('sert le Stock en hausse, avec la courbe du Stock et le début de sa première semaine en ISO, lundi minuit à Paris', async () => {
+    // NOW est un vendredi : les 3 semaines pleines commencent les lundis 28 septembre, 5 et 12 octobre, et leurs mercredis midi (heure de Paris) sont
+    // 23,25, 16,25 et 9,25 jours plus tôt. Deux Arrivées chacun, sur un Stock de 4 tickets d'avant : 4, 6, 8, 10.
+    const rising: TicketHistory[] = [
+      ...[0, 1, 2, 3].map((i): TicketHistory => ({ id: `s${i}`, type: 'task', statusSnapshots: snapshots(['open', 40]), dependencies: [] })),
+      ...[23.25, 16.25, 9.25].flatMap((days) =>
+        [0, 1].map((i): TicketHistory => ({ id: `a${days}.${i}`, type: 'task', statusSnapshots: snapshots(['open', days]), dependencies: [] })),
+      ),
+    ];
+    const risingIssues = rising.map((h): Issue => ({ ...issue, id: h.id, title: `Titre de ${h.id}`, type: 'task', priority: 2 }));
+    const res = await getSignals(serviceWith({ histories: async () => rising, issues: async () => risingIssues }));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json<SignalsResponse>().signals.filter(({ kind }) => kind === 'risingStock')).toEqual([
+      { kind: 'risingStock', project: 'beads-desktop', stock: [4, 6, 8, 10], since: '2026-09-27T22:00:00.000Z' },
+    ]);
   });
 
   it('liste un Projet illisible dans la réponse, sans faire échouer le reste', async () => {

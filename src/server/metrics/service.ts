@@ -288,6 +288,7 @@ function toApiSignal(signal: Signal): ApiSignal {
     case 'longBlockage':
     case 'stagnantReady':
     case 'stalledFlow':
+    case 'risingStock':
     case 'waitingValidation':
       return { ...signal, since: new Date(signal.since).toISOString() };
     default:

@@ -306,6 +306,11 @@ export type ApiSignal =
   | { kind: 'unusualWip'; project: string; wip: number; threshold: number }
   /** Flux à l'arrêt : `ready` Prêts (au moins 3) et aucune Transition depuis `since`, plus de 12 heures de Durée écoulée (`duration`), dans un Projet qui n'est pas en sommeil. */
   | { kind: 'stalledFlow'; project: string; ready: number; since: string; duration: number }
+  /**
+   * Stock en hausse : l'Écart Arrivées–Débit est positif chacune des 3 dernières semaines pleines, et le Stock (tickets non fermés, hors Epics) a crû d'au
+   * moins 25 % et d'au moins 3 tickets. `stock` : le Stock au début de la première semaine, puis à la fin de chacune ; `since` : le début de la première.
+   */
+  | { kind: 'risingStock'; project: string; stock: number[]; since: string }
   /** Validation qui attend : À valider depuis `since`, depuis plus de 24 heures de Durée écoulée (`duration`). */
   | { kind: 'waitingValidation'; project: string; ticket: SignalTicket; since: string; duration: number }
   /** Boucle de Retours : un ticket non fermé qui a subi `sendBacks` Retours, au moins 3. */
@@ -319,7 +324,10 @@ export interface SignalsResponse {
   timeZoneHonoured: boolean;
   projects: Array<{ id: string; name: string }>;
   unreadable: MetricsUnreadableProject[];
-  /** Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Flux à l'arrêt, Validation qui attend, Boucle de Retours), le plus en excès d'abord. */
+  /**
+   * Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Flux à l'arrêt, Stock en hausse, Validation qui attend, Boucle de Retours), le
+   * plus en excès d'abord.
+   */
   signals: ApiSignal[];
 }
 
