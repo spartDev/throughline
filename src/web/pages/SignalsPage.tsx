@@ -53,8 +53,8 @@ export function ProjectSignalsPage() {
 }
 
 /**
- * Les Signaux, groupés par sorte (l'ordre du serveur : Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Flux à l'arrêt, Validation qui attend, Boucle de Retours, le
- * plus en excès d'abord).
+ * Les Signaux, groupés par sorte (l'ordre du serveur : Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Flux à l'arrêt, Stock en hausse, Validation qui
+ * attend, Boucle de Retours, le plus en excès d'abord).
  * Un Signal vit tant que sa condition est vraie : il n'y a rien à écarter, la page se relit avec les données.
  */
 function SignalsView({ project, description, lead }: { project?: Project; description: string; lead?: ReactNode }) {
@@ -96,6 +96,7 @@ function SignalGroups({ response }: { response: SignalsResponse }) {
     // remplacera par une marque sur la ligne du ticket (cadrage bdesk-3e9) : il faudra alors remettre `waitingValidation` dans `NOT_GROUPED`.
     waitingValidation: t.metrics.metricHelp.waitingValidation,
     stalledFlow: t.metrics.metricHelp.stalledFlow,
+    risingStock: t.metrics.metricHelp.risingStock,
     sendBackLoop: t.metrics.metricHelp.sendBackLoop,
   };
   const groups = signalKinds(language)

@@ -3,6 +3,7 @@ import { type Drift, driftsOf } from './drift';
 import { STAGNANT_READY_AFTER } from './health';
 import { type MetricsInput, percentile, type ProjectAnalysis, type TrackedTicket } from './metrics';
 import { reviewOf } from './review';
+import { risingStockAt } from './risingStock';
 import { stalledFlowAt } from './stalledFlow';
 import { isWorking } from './timeline';
 
@@ -77,11 +78,19 @@ export type Signal =
       /** Sa dernière Transition, tous tickets confondus. */
       since: number;
       duration: number;
+    }
+  | {
+      kind: 'risingStock';
+      project: string;
+      /** Son Stock au début de la première des 3 dernières semaines pleines, puis à la fin de chacune. */
+      stock: number[];
+      /** Le début de la première de ces semaines : minuit du lundi, dans le fuseau de l'utilisateur. */
+      since: number;
     };
 
 export interface SignalsOptions {
   now: number;
-  /** Fuseau IANA de l'utilisateur : celui de l'Âge calendaire d'un Prêt. */
+  /** Fuseau IANA de l'utilisateur : celui de l'Âge calendaire d'un Prêt et des semaines du Stock en hausse. */
   timeZone: string;
 }
 
@@ -118,6 +127,10 @@ export function signalsOf(projects: MetricsInput[], { now, timeZone }: SignalsOp
     const stalled = stalledFlowAt(project.analysis, now);
     return stalled ? [{ kind: 'stalledFlow', project: project.id, ...stalled, duration: now - stalled.since }] : [];
   });
+  const risingStocks = projects.flatMap((project): Signal[] => {
+    const rising = risingStockAt(project.analysis, now, timeZone);
+    return rising ? [{ kind: 'risingStock', project: project.id, ...rising }] : [];
+  });
   const waitingValidations = projects.flatMap((project) =>
     project.analysis.tickets.flatMap((ticket): Signal[] => {
       const since = awaitingHumanSince(ticket, now);
@@ -136,7 +149,7 @@ export function signalsOf(projects: MetricsInput[], { now, timeZone }: SignalsOp
       return sendBacks >= SEND_BACK_LOOP_FROM ? [{ kind: 'sendBackLoop', project: project.id, ticket: named(ticket), sendBacks }] : [];
     }),
   );
-  return [...drifts, ...longBlockages, ...stagnantReadies, ...unusualWips, ...stalledFlows, ...waitingValidations, ...sendBackLoops].sort(bySeverity);
+  return [...drifts, ...longBlockages, ...stagnantReadies, ...unusualWips, ...stalledFlows, ...risingStocks, ...waitingValidations, ...sendBackLoops].sort(bySeverity);
 }
 
 /** Les statuts datés du ticket jusqu'à `now` : le Dernier commit, tel que les Signaux le lisent. */
@@ -179,7 +192,7 @@ function usualWip(analysis: ProjectAnalysis, now: number): number | null {
 }
 
 /** L'ordre des groupes, de la page « À regarder ». */
-const KIND_ORDER: Signal['kind'][] = ['drift', 'longBlockage', 'stagnantReady', 'unusualWip', 'stalledFlow', 'waitingValidation', 'sendBackLoop'];
+const KIND_ORDER: Signal['kind'][] = ['drift', 'longBlockage', 'stagnantReady', 'unusualWip', 'stalledFlow', 'risingStock', 'waitingValidation', 'sendBackLoop'];
 
 /** Combien un Signal dépasse ce qui est normal : plus c'est grand, plus il vient tôt dans son groupe. */
 function excess(signal: Signal): number {
@@ -195,6 +208,9 @@ function excess(signal: Signal): number {
     case 'stalledFlow':
     case 'waitingValidation':
       return signal.duration;
+    case 'risingStock':
+      // La hausse du Stock en tickets, de sa première valeur à sa dernière ; à hausse égale, `stockFrom` départage.
+      return (signal.stock.at(-1) as number) - (signal.stock[0] as number);
     case 'sendBackLoop':
       return signal.sendBacks;
   }
@@ -202,11 +218,21 @@ function excess(signal: Signal): number {
 
 const idOf = (signal: Signal) => ('ticket' in signal ? signal.ticket.id : '');
 
-/** Par sorte, puis du plus en excès au moins en excès ; à égalité, par Projet puis par ticket, pour un ordre stable. */
+/**
+ * Le Stock de départ d'un Stock en hausse (0 pour les autres sortes). À hausse égale, la croissance relative est d'autant plus forte que le Stock partait
+ * de bas : le plus bas d'abord.
+ */
+const stockFrom = (signal: Signal) => (signal.kind === 'risingStock' ? (signal.stock[0] as number) : 0);
+
+/**
+ * Par sorte, puis du plus en excès au moins en excès ; à égalité, du Stock en hausse qui croît le plus au moins, puis par Projet puis par ticket, pour un
+ * ordre stable.
+ */
 function bySeverity(a: Signal, b: Signal): number {
   return (
     KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
     excess(b) - excess(a) ||
+    stockFrom(a) - stockFrom(b) ||
     (a.project < b.project ? -1 : a.project > b.project ? 1 : 0) ||
     (idOf(a) < idOf(b) ? -1 : idOf(a) > idOf(b) ? 1 : 0)
   );

@@ -187,6 +187,26 @@ describe('« À regarder » : les Signaux de relais', () => {
     expect(text(await screen.findByRole('tooltip'))).toContain('ce que le Signal ne dit pas');
   });
 
+  it('montre le Stock en hausse après le Flux à l’arrêt : le Projet mène à son kanban, la ligne dit la courbe du Stock, avec son aide', async () => {
+    const stalled: ApiSignal = { kind: 'stalledFlow', project: 'bdesk', ready: 9, since: '2026-10-23T03:00:00.000Z', duration: 15 * 3_600_000 };
+    const rising: ApiSignal = { kind: 'risingStock', project: 'bdesk', stock: [21, 25, 31, 40], since: '2026-09-27T22:00:00.000Z' };
+    stubSignals({ bdesk: [...BDESK, stalled, rising, ...RELAYED], mpm: MPM });
+    renderApp('/');
+
+    const group = await screen.findByRole('region', { name: 'Stock en hausse' });
+    const titled = screen.getAllByRole('region').filter((region) => region.hasAttribute('data-signal-group'));
+    expect(titled.map((region) => region.querySelector('h2')?.textContent).slice(4, 7)).toEqual(['Flux à l’arrêt', 'Stock en hausse', 'Validation qui attend']);
+    expect(within(group).getByRole('link', { name: 'beads-desktop' }).getAttribute('href')).toBe('/p/bdesk/kanban');
+    expect(text(group)).toContain(
+      'beads-desktop : Stock de 21 à 40 tickets en 3 semaines (21 → 25 → 31 → 40), en hausse chaque semaine',
+    );
+
+    await userEvent.setup().hover(within(group).getByRole('button', { name: 'À propos de Stock en hausse' }));
+    const help = text(await screen.findByRole('tooltip'));
+    expect(help).toContain('pas pourquoi');
+    expect(help).toContain('3 semaines de suite');
+  });
+
   it('laisse les autres groupes sans aide', async () => {
     stubSignals();
     renderApp('/');
@@ -204,6 +224,16 @@ describe('la page « À regarder » d’un Projet', () => {
     await screen.findByRole('region', { name: 'Dérive' });
     await waitFor(() => expect(requested(fetchMock)).toContain('/api/signals?project=bdesk&timeZone=Europe%2FParis'));
     expect(screen.queryByRole('region', { name: 'WIP inhabituel' })).toBeNull();
+  });
+
+  it('montre le Stock en hausse du Projet, avec la courbe du Stock', async () => {
+    const rising: ApiSignal = { kind: 'risingStock', project: 'bdesk', stock: [2, 9, 17, 28], since: '2026-09-27T22:00:00.000Z' };
+    stubSignals({ bdesk: [rising], mpm: MPM });
+    renderApp('/p/bdesk/signals');
+
+    const group = await screen.findByRole('region', { name: 'Stock en hausse' });
+    expect(text(group)).toContain('beads-desktop : Stock de 2 à 28 tickets en 3 semaines (2 → 9 → 17 → 28)');
+    expect(screen.queryByText(/Rien à regarder/)).toBeNull();
   });
 
   it('est un onglet du Projet, entre Kanban et Epics', async () => {

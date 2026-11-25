@@ -464,3 +464,202 @@ describe('signalsOf : Flux à l’arrêt', () => {
     expect(onlyStalled(both).map(({ project }) => project)).toEqual(['long', 'court']);
   });
 });
+
+describe('signalsOf : Stock en hausse', () => {
+  /** Le lundi 28 septembre 2026, 00:00 à Paris (heure d'été) : le début de la première des 3 semaines pleines qui précèdent NOW, un vendredi. */
+  const WEEK_1 = new Date('2026-09-28T00:00:00+02:00').getTime();
+  /** Le mercredi midi, à Paris, de la semaine `k` (de 1 à 3, puis 4 : la semaine en cours). Pas de changement d'heure avant le 25 octobre. */
+  const midWeek = (k: number) => WEEK_1 + (k - 1) * 7 * DAY + 2 * DAY + 12 * HOUR;
+  /** Bien avant toutes les semaines comptées, ici comme dans le test du changement d'heure. */
+  const LONG_AGO = new Date('2026-09-01T12:00:00Z').getTime();
+
+  /** Ce qui se passe dans une semaine, à l'instant `at` : des Arrivées, qui restent ouvertes, et des clôtures de tickets du Stock de départ. */
+  interface Week {
+    at: number;
+    arrivals: number;
+    deliveries?: number;
+    declines?: number;
+  }
+
+  /**
+   * Un Projet dont le Stock vaut `start` au début de la semaine 1 : des tickets créés bien avant. Chaque semaine en ferme quelques-uns, livrés ou
+   * renoncés (label `declined`), et en crée d'autres.
+   */
+  function stockFlow(start: number, weeks: Week[], prefix = ''): MetricsTicket[] {
+    const closures: Array<{ at: number; declined: boolean }> = weeks.flatMap(({ at, deliveries = 0, declines = 0 }) => [
+      ...Array.from({ length: deliveries }, () => ({ at, declined: false })),
+      ...Array.from({ length: declines }, () => ({ at, declined: true })),
+    ]);
+    const initial = Array.from({ length: start }, (_, i) => {
+      const closure = closures[i];
+      if (!closure) return ticket(`${prefix}s${i}`, [['open', LONG_AGO]]);
+      return ticket(`${prefix}s${i}`, [['open', LONG_AGO], ['closed', closure.at]], closure.declined ? { labels: ['declined'] } : {});
+    });
+    const arrivals = weeks.flatMap(({ at, arrivals: n }, w) => Array.from({ length: n }, (_, i) => ticket(`${prefix}a${w}.${i}`, [['open', at]])));
+    return [...initial, ...arrivals];
+  }
+
+  /** Chaque semaine, du mercredi midi : `arrivals` créés, `deliveries` livrés. */
+  const weekly = (...counts: Array<[arrivals: number, deliveries: number]>): Week[] =>
+    counts.map(([arrivals, deliveries], i) => ({ at: midWeek(i + 1), arrivals, deliveries }));
+
+  /** Les Stocks en hausse d'un seul Projet, « p ». */
+  const risingAt = (tickets: MetricsTicket[], now = NOW, timeZone = PARIS) =>
+    signalsOf([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) }], { now, timeZone }).filter(
+      (signal) => signal.kind === 'risingStock',
+    );
+
+  it('un Stock qui monte chacune des 3 semaines pleines et croît de 25 % : le Signal, avec la courbe du Stock', () => {
+    expect(risingAt(stockFlow(8, weekly([4, 1], [4, 1], [4, 1])))).toEqual([{ kind: 'risingStock', project: 'p', stock: [8, 11, 14, 17], since: WEEK_1 }]);
+  });
+
+  it('2 semaines seulement ne suffisent pas, et la semaine en cours n’en remplace pas une : elle n’est pas finie', () => {
+    expect(risingAt(stockFlow(8, weekly([2, 2], [5, 0], [5, 0])))).toEqual([]);
+    expect(risingAt(stockFlow(8, weekly([4, 1], [4, 1], [2, 2], [10, 0])))).toEqual([]);
+  });
+
+  it('une rafale d’une journée suivie de 2 semaines à l’équilibre n’est pas un Stock en hausse : le Stock a pourtant triplé', () => {
+    expect(risingAt(stockFlow(8, weekly([20, 0], [2, 2], [2, 2])))).toEqual([]);
+  });
+
+  it('25 % pile suffit, un peu moins non', () => {
+    expect(risingAt(stockFlow(12, weekly([1, 0], [1, 0], [1, 0])))).toMatchObject([{ stock: [12, 13, 14, 15] }]);
+    expect(risingAt(stockFlow(13, weekly([1, 0], [1, 0], [1, 0])))).toEqual([]);
+  });
+
+  it('un Renoncement sort du Stock comme une Livraison : de 4 à 6, la dernière semaine ne monte pas ; de 4 à 7, 3 tickets pile, oui', () => {
+    const declined = stockFlow(4, [...weekly([1, 0], [1, 0]), { at: midWeek(3), arrivals: 1, declines: 1 }]);
+
+    expect(risingAt(declined)).toEqual([]);
+    expect(risingAt(stockFlow(4, weekly([1, 0], [1, 0], [1, 0])))).toMatchObject([{ stock: [4, 5, 6, 7] }]);
+  });
+
+  it('chaque semaine se juge sur le Stock d’alors : une Réouverture, une reclôture ou un label `declined` de la semaine en cours n’y change rien', () => {
+    /** Remplace le ticket du même identifiant : le même Projet, dont un ticket a changé depuis. */
+    const changed = (tickets: MetricsTicket[], replacement: MetricsTicket) => tickets.map((t) => (t.id === replacement.id ? replacement : t));
+    /** s0, le ticket du Stock de départ livré la semaine 1 : rouvert ou reclos le mercredi de la semaine en cours, ou étiqueté depuis. */
+    const deliveredInWeek1: [string, number][] = [
+      ['open', LONG_AGO],
+      ['closed', midWeek(1)],
+    ];
+    const week1Flat = stockFlow(8, weekly([3, 3], [4, 1], [4, 1]));
+
+    expect(risingAt(week1Flat)).toEqual([]);
+    expect(risingAt(changed(week1Flat, ticket('s0', [...deliveredInWeek1, ['open', midWeek(4)]])))).toEqual([]);
+    expect(risingAt(changed(week1Flat, ticket('s0', [...deliveredInWeek1, ['open', midWeek(4)], ['closed', midWeek(4) + HOUR]])))).toEqual([]);
+    expect(risingAt(changed(week1Flat, ticket('s0', deliveredInWeek1, { labels: ['declined'] })))).toEqual([]);
+
+    // 9 → 12 → 12 → 15 : s1, livré la semaine 2, est rouvert cette semaine. Le Stock d'alors ne monte pas la semaine 2.
+    const week2Flat = stockFlow(9, weekly([4, 1], [1, 1], [4, 1]));
+    expect(risingAt(changed(week2Flat, ticket('s1', [['open', LONG_AGO], ['closed', midWeek(2)], ['open', midWeek(4)]])))).toEqual([]);
+
+    // Et un Stock en hausse le reste, avec la même courbe, quand la semaine en cours ferme 5 tickets de son Stock.
+    expect(risingAt(stockFlow(8, [...weekly([4, 1], [4, 1], [4, 1]), { at: midWeek(4), arrivals: 0, deliveries: 5 }]))).toMatchObject([
+      { stock: [8, 11, 14, 17] },
+    ]);
+  });
+
+  it('aucune semaine ne porte plus de la moitié de la hausse : une rafale d’un jour suivie d’un ticket de plus par semaine n’en est pas un', () => {
+    expect(risingAt(stockFlow(100, weekly([25, 0], [1, 0], [1, 0])))).toEqual([]); // 100 → 125 → 126 → 127
+    expect(risingAt(stockFlow(40, weekly([20, 0], [1, 0], [1, 0])))).toEqual([]); // 40 → 60 → 61 → 62
+    expect(risingAt(stockFlow(21, weekly([4, 0], [6, 0], [9, 0])))).toMatchObject([{ stock: [21, 25, 31, 40] }]);
+  });
+
+  it('la moitié pile de la hausse sur une semaine suffit, un peu plus non', () => {
+    expect(risingAt(stockFlow(10, weekly([2, 0], [1, 0], [1, 0])))).toMatchObject([{ stock: [10, 12, 13, 14] }]);
+    expect(risingAt(stockFlow(10, weekly([3, 0], [1, 0], [1, 0])))).toEqual([]); // 10 → 13 → 14 → 15
+  });
+
+  it('un Stock qui retombe après une rafale n’est pas en hausse, même avec plus d’Arrivées que de Livraisons chaque semaine : 8 → 30 → 12 → 11', () => {
+    // La rafale de 22 tickets de la semaine 1 est presque toute renoncée ensuite : 19 la semaine 2, 2 la semaine 3. Aucune Livraison.
+    const burst = Array.from({ length: 22 }, (_, i) =>
+      i < 21
+        ? ticket(
+            `b${i}`,
+            [
+              ['open', midWeek(1)],
+              ['closed', midWeek(i < 19 ? 2 : 3)],
+            ],
+            { labels: ['declined'] },
+          )
+        : ticket(`b${i}`, [['open', midWeek(1)]]),
+    );
+
+    expect(risingAt([...stockFlow(8, weekly([0, 0], [1, 0], [1, 0])), ...burst])).toEqual([]);
+  });
+
+  it('la limite : une rafale à cheval sur dimanche minuit, partagée à parts égales entre deux semaines, en fait un si la troisième monte aussi', () => {
+    const sundayNight = new Date('2026-10-04T23:30:00+02:00').getTime();
+    const tickets = stockFlow(20, [
+      { at: sundayNight, arrivals: 10 },
+      { at: sundayNight + HOUR, arrivals: 10 },
+      { at: midWeek(3), arrivals: 1 },
+    ]);
+
+    expect(risingAt(tickets)).toEqual([{ kind: 'risingStock', project: 'p', stock: [20, 30, 40, 41], since: WEEK_1 }]);
+  });
+
+  it('compte les semaines dans le Fuseau de l’utilisateur : lundi 00:30 à Paris est encore dimanche en UTC', () => {
+    const mondayNight = new Date('2026-10-12T00:30:00+02:00').getTime();
+    const tickets = stockFlow(8, [...weekly([4, 1], [4, 1]), { at: mondayNight, arrivals: 2 }, { at: midWeek(3), arrivals: 0, deliveries: 1 }]);
+
+    expect(risingAt(tickets)).toEqual([{ kind: 'risingStock', project: 'p', stock: [8, 11, 14, 15], since: WEEK_1 }]);
+    expect(risingAt(tickets, NOW, 'UTC')).toEqual([]);
+  });
+
+  it('lundi 00:00 pile appartient à la semaine qui commence : une Arrivée de cet instant n’est pas dans le Stock de départ', () => {
+    const tickets = stockFlow(8, [{ at: WEEK_1, arrivals: 4, deliveries: 1 }, ...weekly([4, 1], [4, 1]).map((week, i) => ({ ...week, at: midWeek(i + 2) }))]);
+
+    expect(risingAt(tickets)).toEqual([{ kind: 'risingStock', project: 'p', stock: [8, 11, 14, 17], since: WEEK_1 }]);
+  });
+
+  it('une semaine qui traverse un changement d’heure dure 7 jours et 1 heure : dimanche 23:30, après le passage à l’heure d’hiver, en fait partie', () => {
+    /** Mercredi 11 novembre 2026 : ses 3 semaines pleines vont du lundi 19 octobre (heure d'été) au dimanche 8 novembre (heure d'hiver). */
+    const now = new Date('2026-11-11T12:00:00Z').getTime();
+    const sundayNight = new Date('2026-10-25T23:30:00+01:00').getTime();
+    const tickets = stockFlow(8, [
+      { at: sundayNight, arrivals: 2 },
+      { at: new Date('2026-10-28T12:00:00+01:00').getTime(), arrivals: 4, deliveries: 1 },
+      { at: new Date('2026-11-04T12:00:00+01:00').getTime(), arrivals: 4, deliveries: 1 },
+    ]);
+
+    expect(risingAt(tickets, now)).toEqual([
+      { kind: 'risingStock', project: 'p', stock: [8, 10, 13, 16], since: new Date('2026-10-19T00:00:00+02:00').getTime() },
+    ]);
+  });
+
+  it('les Epics ne sont pas du Stock, ni celles d’avant ni celles créées pendant les 3 semaines', () => {
+    const epics = (k: number) => Array.from({ length: 3 }, (_, i) => ticket(`e${k}.${i}`, [['open', midWeek(k)]], { type: 'epic' }));
+    const allEpics = [...epics(1), ...epics(2), ...epics(3), ticket('e0', [['open', LONG_AGO]], { type: 'epic' })];
+
+    expect(risingAt([...stockFlow(8, weekly([1, 1], [1, 1], [1, 1])), ...allEpics])).toEqual([]);
+    expect(risingAt([...stockFlow(8, weekly([4, 1], [4, 1], [4, 1])), ...allEpics])).toMatchObject([{ stock: [8, 11, 14, 17] }]);
+  });
+
+  it('se range après le Flux à l’arrêt et avant les Validations qui attendent, la plus forte hausse en tickets d’abord, puis la plus forte croissance', () => {
+    // Des Projets nommés dans l'ordre inverse de celui attendu : l'ordre ne vient pas de leur nom.
+    const flows: Array<[id: string, tickets: MetricsTicket[]]> = [
+      ['a', stockFlow(0, weekly([1, 0], [1, 0], [1, 0]))], // 0 → 3 : parti de zéro, mais la plus petite hausse
+      ['b', stockFlow(1, weekly([100, 0], [100, 0], [100, 0]))], // 1 → 301
+      ['c', stockFlow(0, weekly([100, 0], [100, 0], [100, 0]))], // 0 → 300 : la même hausse que b, de plus bas
+      ['lent', stockFlow(8, weekly([4, 1], [4, 1], [4, 1]))], // 8 → 17
+      ['vif', stockFlow(4, weekly([3, 0], [3, 0], [3, 0]))], // 4 → 13 : la même hausse que lent, de plus bas
+    ];
+    const ranked = signalsOf(
+      flows.map(([id, tickets]) => ({ id, name: id, analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) })),
+      { now: NOW, timeZone: PARIS },
+    );
+    const moved = ticket('m', [
+      ['open', NOW - 14 * HOUR],
+      ['in_progress', NOW - 13 * HOUR],
+    ]);
+    const waiting = ticket('v', [
+      ['in_progress', ago(3)],
+      ['awaiting_human', ago(2)],
+    ]);
+    const kinds = [...new Set(signalsAt([...stockFlow(8, weekly([4, 1], [4, 1], [4, 1])), moved, waiting]).map(({ kind }) => kind))];
+
+    expect(kinds.slice(kinds.indexOf('stalledFlow'))).toEqual(['stalledFlow', 'risingStock', 'waitingValidation']);
+    expect(ranked.filter(({ kind }) => kind === 'risingStock').map(({ project }) => project)).toEqual(['c', 'b', 'vif', 'lent', 'a']);
+  });
+});
