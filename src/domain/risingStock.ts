@@ -13,6 +13,9 @@ import { statusAt } from './timeline';
  * arrive après les 3 semaines (une Réouverture, une nouvelle clôture, un label `declined`) ne change pas leur verdict. L'Écart Arrivées–Débit, lui, date
  * une Livraison de sa dernière clôture et la reconnaît à son label, tels que le Dernier commit les montre : il réécrirait les semaines passées, et le
  * Signal ne le lit pas.
+ *
+ * Limite : l'historique ne lit que les tickets du Dernier commit, avec leur type d'aujourd'hui. Un ticket supprimé (une purge des tickets fermés comprise)
+ * ou dont le type change en Epic, ou d'Epic en autre chose, réécrit donc le Stock des semaines passées, comme toute mesure (bdesk-fdh).
  */
 
 /** Le Stock en hausse se lit sur ce nombre de semaines pleines, les dernières avant la semaine en cours, qui n'est pas finie. */
