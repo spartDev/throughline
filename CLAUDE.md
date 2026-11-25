@@ -100,3 +100,15 @@ _Add your project-specific conventions here_
 
 - Copie isolée : `scripts/sandbox.sh <commit> <dir>` puis `source <dir>/env.sh` (`bd` hors du PATH) ; gates : `scripts/gates.sh [dir]`.
 - Le hook `.claude/hooks/guard-bash.sh` refuse `find` sur `/`, `~`, `/Users/<nom>`, `pkill`, `pgrep -f` et `rm -rf` sur `/` ou `~` : tuez par PID noté.
+
+## Chaîne d'un ticket
+
+L'orchestrateur (la session principale) mène chaque ticket de feature ou de bug par ces étapes et pose lui-même les Statuts de relais (ADR 0007) ; les sous-agents n'ont pas `bd`. Modèles : `~/.claude/rules/pstack-models.md` (méthode : playbook Feature et skill interrogate de pstack).
+
+1. `in_progress` : cadrage par l'orchestrateur (forme des données, fichiers touchés, critères du ticket), puis un seul sous-agent `pstack:poteto-agent` (ligne `feature`) code dans un bac à sable et passe les gates dans sa copie. Plusieurs formes valables : arena à la place.
+2. L'orchestrateur reporte le diff sur la branche, relit, lance `scripts/gates.sh`.
+3. `in_review` : relecture interrogate, un adversaire par siège de `interrogate reviewers`, chacun dans son bac à sable ; un constat ne compte que s'il est prouvé par une exécution, et l'orchestrateur relance chaque repro avant de le retenir.
+4. Retour vers `in_progress` : un nouveau sous-agent corrige les constats retenus, commit « constats de la relecture N ». Nouveau tour seulement si les corrections changent un comportement ; 3 tours au plus.
+5. `in_integration` : PR, CI, rebase. Puis `awaiting_human` : feu vert et merge par l'utilisateur ; l'orchestrateur ferme le ticket au merge.
+
+Écarts assumés à pstack : pas de `/no-comments` (ce dépôt documente son code en français) ; bacs à sable `sandbox.sh` plutôt que worktrees (`bd` y resterait joignable) ; tickets qui touchent les mêmes fichiers en série, la PR suivante empilée sur la précédente.
