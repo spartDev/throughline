@@ -36,6 +36,8 @@ const fr = {
     /** Les Signaux de relais (ADR 0007) : leur aide, là où ils se montrent. */
     waitingValidation:
       'Un ticket À valider depuis plus de 24 heures de Durée écoulée, nuits et week-ends compris. Il attend votre décision (un Feu vert, une réponse, un test) : tant que vous ne l’avez pas prise, la chaîne ne peut pas avancer.',
+    stalledFlow:
+      'Un Projet a au moins 3 tickets Prêts et aucun ticket n’a changé de statut depuis plus de 12 heures de Durée écoulée, nuits comprises. Rien n’avance alors que du travail attend : il faut regarder pourquoi, ce que le Signal ne dit pas, et un agent peut travailler sans changer de statut. Les Epics ne comptent pas. Un Projet sans Transition depuis plus de 7 jours dort, et n’en a pas.',
     sendBackLoop:
       'Un ticket non fermé revenu au moins 3 fois au développement après une relecture, une intégration ou une validation (des Retours). Le défaut revient, ou le besoin est flou : mieux vaut regarder le ticket que relancer un tour de plus.',
   },
@@ -256,6 +258,8 @@ const en: typeof fr = {
       'Ready tickets (no blocking dependency, can be started) waiting for more than 14 days without being started. They point to forgotten or low-priority work, to triage or close.',
     waitingValidation:
       'A ticket Awaiting validation for more than 24 hours of Elapsed time, nights and weekends included. It waits for your decision (a Green light, an answer, a test): until you make it, the chain cannot move on.',
+    stalledFlow:
+      'A project has at least 3 Ready tickets and no ticket has changed status for more than 12 hours of Elapsed time, nights included. Nothing moves while work is waiting: look into why, which the Signal does not say, and an agent can work without changing a status. Epics do not count. A project with no Transition for more than 7 days is dormant and has none.',
     sendBackLoop:
       'A ticket not yet closed that went back to development at least 3 times after a review, an integration or a validation (Send-backs). The defect keeps coming back, or the need is unclear: better look at the ticket than run one more round.',
   },

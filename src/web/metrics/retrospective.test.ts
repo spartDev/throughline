@@ -131,6 +131,20 @@ describe('rapport de rétrospective : les Signaux de relais', () => {
     expect(text).toContain('### Send-back loop\n\n- `bdesk-l` Thème sombre: 4 Send-backs to development, still not closed');
   });
 
+  it('le Flux à l’arrêt se range après le WIP inhabituel, au nom de son Projet', () => {
+    const stalled = signalsResponse({
+      projects: [{ id: 'bdesk', name: 'beads-desktop' }],
+      signals: [
+        { kind: 'unusualWip', project: 'bdesk', wip: 9, threshold: 6 },
+        { kind: 'stalledFlow', project: 'bdesk', ready: 4, since: '2026-11-01T19:00:00.000Z', duration: 25 * 3_600_000 },
+      ],
+    });
+    expect(build(metrics(), stalled)).toContain(
+      '### WIP inhabituel\n\n- beads-desktop : 9 tickets en cours, au-delà de 6, le P85 du WIP quotidien des 90 derniers jours\n\n' +
+        '### Flux à l’arrêt\n\n- beads-desktop : 4 tickets Prêts, et aucune Transition depuis 1 j',
+    );
+  });
+
   it('comptent dans « aucun Signal »', () => {
     expect(build(undefined, signalsResponse({ signals: [] }))).toContain('ni aucune Boucle de Retours en ce moment.');
   });

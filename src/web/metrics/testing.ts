@@ -218,7 +218,7 @@ export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHe
       waits: { median: 2.1 * DAY, p85: 6 * DAY, n: 6 },
     },
     readyAges: { stagnantAfter: 14 * DAY, tickets: readyTickets, stagnant: 3, trend: trendOf(3, 2) },
-    activity: { cells, total: sumOf(cells) },
+    activity: { cells, total: sumOf(cells), stalled: { duration: 30 * 3_600_000, ready: 6.5 } },
     ...overrides,
   };
 }
@@ -233,7 +233,7 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
     declines: { total: 0, trend: trendOf(0, 0) },
     leadTimeBreakdown: { deliveries: 0, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0, waited: 0, waits: { median: null, p85: null, n: 0 } },
     readyAges: { stagnantAfter: 14 * DAY, tickets: [], stagnant: 0, trend: trendOf(0, 0) },
-    activity: { cells: Array.from({ length: 7 }, () => new Array<number>(24).fill(0)), total: 0 },
+    activity: { cells: Array.from({ length: 7 }, () => new Array<number>(24).fill(0)), total: 0, stalled: { duration: 0, ready: null } },
     ...overrides,
   };
 }

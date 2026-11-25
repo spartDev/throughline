@@ -53,7 +53,7 @@ export function ProjectSignalsPage() {
 }
 
 /**
- * Les Signaux, groupés par sorte (l'ordre du serveur : Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Validation qui attend, Boucle de Retours, le
+ * Les Signaux, groupés par sorte (l'ordre du serveur : Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Flux à l'arrêt, Validation qui attend, Boucle de Retours, le
  * plus en excès d'abord).
  * Un Signal vit tant que sa condition est vraie : il n'y a rien à écarter, la page se relit avec les données.
  */
@@ -95,6 +95,7 @@ function SignalGroups({ response }: { response: SignalsResponse }) {
     // PROVISOIRE (bdesk-3e9.6) : la Validation qui attend forme un groupe, comme les autres Signaux, tant que la File de décisions n'existe pas. Celle-ci le
     // remplacera par une marque sur la ligne du ticket (cadrage bdesk-3e9) : il faudra alors remettre `waitingValidation` dans `NOT_GROUPED`.
     waitingValidation: t.metrics.metricHelp.waitingValidation,
+    stalledFlow: t.metrics.metricHelp.stalledFlow,
     sendBackLoop: t.metrics.metricHelp.sendBackLoop,
   };
   const groups = signalKinds(language)
@@ -146,7 +147,7 @@ function SignalGroup({ label, help, signals, projects }: { label: string; help?:
 
 function SignalRow({ signal, projects }: { signal: ApiSignal; projects: NamedProject[] }) {
   const { language, t } = useLanguage();
-  if (signal.kind === 'unusualWip') {
+  if (!('ticket' in signal)) {
     return (
       <p className="wrap-anywhere text-ink-2">
         <Link to={paths.kanban(signal.project)} className="font-medium text-ink hover:underline">

@@ -67,8 +67,8 @@ describe('the shared helpers of the shell zone, in English', () => {
   });
 
   it('says the signals', () => {
-    expect(signalKinds('en').map(({ label }) => label)).toEqual(['Drift', 'Long blockage', 'Stale ready', 'Unusual WIP', 'Waiting validation', 'Send-back loop']);
-    expect(SIGNAL_KINDS.map(({ label }) => label)).toEqual(['Dérive', 'Blocage long', 'Prêt qui stagne', 'WIP inhabituel', 'Validation qui attend', 'Boucle de Retours']);
+    expect(signalKinds('en').map(({ label }) => label)).toEqual(['Drift', 'Long blockage', 'Stale ready', 'Unusual WIP', 'Stalled flow', 'Waiting validation', 'Send-back loop']);
+    expect(SIGNAL_KINDS.map(({ label }) => label)).toEqual(['Dérive', 'Blocage long', 'Prêt qui stagne', 'WIP inhabituel', 'Flux à l’arrêt', 'Validation qui attend', 'Boucle de Retours']);
     expect(signalSentence({ kind: 'longBlockage', project: 'p', ticket, since: '', duration: 4 * DAY }, 'en')).toBe(
       `blocked while in progress for 4${NBSP}d`,
     );
@@ -80,6 +80,12 @@ describe('the shared helpers of the shell zone, in English', () => {
     );
     expect(signalSentence({ kind: 'unusualWip', project: 'p', wip: 1200, threshold: 1000 }, 'en')).toBe(
       '1,200 tickets in progress, above 1,000, the P85 of daily WIP over the last 90 days',
+    );
+    expect(signalSentence({ kind: 'stalledFlow', project: 'p', ready: 3, since: '', duration: 13 * 3_600_000 }, 'en')).toBe(
+      `3 Ready tickets, and no Transition for 13${NBSP}h`,
+    );
+    expect(signalSentence({ kind: 'stalledFlow', project: 'p', ready: 3, since: '', duration: 13 * 3_600_000 })).toBe(
+      `3 tickets Prêts, et aucune Transition depuis 13${NBSP}h`,
     );
     expect(signalSentence({ kind: 'drift', project: 'p', ticket, cycleTime: 2 * DAY, reference: DAY, scope: 'project' }, 'en')).toBe(
       `2${NBSP}d of Cycle Time so far, above 1${NBSP}d, the P85 of the project’s deliveries`,

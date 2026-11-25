@@ -35,15 +35,29 @@ describe('ActivityPanel : la carte d’activité', () => {
 
     expect(plain(screen.getByText(/^100 Transitions/).textContent)).toBe(
       '100 Transitions par jour de la semaine et par heure, dans le fuseau Europe/Paris. Pic : jeudi, de 9 h à 10 h (6). ' +
-        'Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période.',
+        'Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période. ' +
+        'Heures à l’arrêt : 30 h, avec 6,5 Prêts en moyenne, sans aucune Transition depuis plus de 12 heures.',
     );
+  });
+
+  it('dit qu’il n’y a eu aucune Heure à l’arrêt, sans prétendre qu’il n’y a jamais eu 3 Prêts : un Projet en sommeil en a peut-être', () => {
+    renderPanel({ ...healthFixture().activity, stalled: { duration: 0, ready: null } });
+
+    expect(plain(screen.getByText(/^100 Transitions/).textContent)).toContain('Aucune Heure à l’arrêt sur la période.');
+  });
+
+  it('n’écrit pas « 0 h » pour un arrêt de moins d’une heure', () => {
+    renderPanel({ ...healthFixture().activity, stalled: { duration: 20 * 60_000, ready: 3 } });
+
+    expect(plain(screen.getByText(/^100 Transitions/).textContent)).toContain('Heures à l’arrêt : moins d’1 h, avec 3 Prêts en moyenne');
   });
 
   it('le dit aussi sans Transition : la phrase décrit la carte, pas ses données', () => {
     renderPanel(emptyHealthFixture().activity);
 
     expect(plain(screen.getByText(/^Les Transitions par jour de la semaine/).textContent)).toBe(
-      'Les Transitions par jour de la semaine et par heure, dans le fuseau Europe/Paris. Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période.',
+      'Les Transitions par jour de la semaine et par heure, dans le fuseau Europe/Paris. Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période. ' +
+        'Aucune Heure à l’arrêt sur la période.',
     );
   });
 

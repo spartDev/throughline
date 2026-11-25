@@ -144,7 +144,7 @@ function signals(input: RetrospectiveSignals, timeZone: string, projectName: (id
     lines.push(`### ${label}`, '');
     for (const signal of group) {
       const where = escapeMarkdown(projectName(signal.project));
-      if (signal.kind === 'unusualWip') {
+      if (!('ticket' in signal)) {
         lines.push(`- ${texts.item(where, signalSentence(signal, language))}`);
       } else {
         lines.push(`- ${texts.item(`\`${signal.ticket.id}\` ${escapeMarkdown(ticketTitle(signal.ticket))}${showProject ? ` (${where})` : ''}`, signalSentence(signal, language))}`);

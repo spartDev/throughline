@@ -239,8 +239,17 @@ _English_: Long blockage
 Un WIP d'un Projet au-dessus du 85ᵉ centile de son WIP quotidien des 90 derniers jours : le WIP relevé toutes les 24 heures, à la même heure que maintenant, les jours où le Projet existait. Sous 14 relevés, on ne sait pas ce qui est habituel.
 _English_: Unusual WIP
 
+**Flux à l'arrêt**:
+Un Projet qui a au moins 3 Prêts et dont aucun ticket n'a fait de Transition depuis plus de 12 heures de Durée écoulée (12 heures pile ne l'est pas). Un Projet dont la dernière Transition a plus de 7 jours dort : il n'est pas à l'arrêt, il n'est pas en marche, et un Projet sans aucune Transition non plus. La création d'un ticket n'est pas une Transition, et les Transitions des Epics ne comptent pas, comme sur la Carte d'activité : les Epics ne sont mesurées nulle part. Il dit que rien n'avance alors que du travail attend, pas pourquoi : un agent peut travailler sans changer de statut.
+_English_: Stalled flow
+_Avoid_: agents inactifs, famine
+
+**Heures à l'arrêt**:
+La Durée écoulée d'une période pendant laquelle le Flux d'un Projet était à l'arrêt (la condition du Signal, vraie à chaque instant compté), sommée sur les Projets de la vue, avec le nombre moyen de Prêts pendant ce temps, pesé par lui. Elle se lit avec la Carte d'activité : une case vide dit que rien n'a bougé, les Heures à l'arrêt disent que rien n'a bougé alors que du travail attendait.
+_English_: Stalled hours
+
 **Signal**:
-Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long, WIP inhabituel, Validation qui attend, Boucle de Retours ou Porte humaine saturée. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.
+Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long, WIP inhabituel, Flux à l'arrêt, Validation qui attend, Boucle de Retours ou Porte humaine saturée. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.
 _English_: Signal
 _Avoid_: alerte, notification
 
@@ -407,7 +416,7 @@ _Avoid_: objectif, output, critères d'acceptation
 - Le kanban, le **Panneau de ticket**, les métriques et la **Chronologie** d'un **Projet** lisent le même **Dernier commit**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
 - Une **Dérive** compare le **Cycle Time** en cours d'un ticket à son **Cycle Time de référence**
-- Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long**, le **WIP inhabituel**, la **Validation qui attend**, la **Boucle de Retours** et la **Porte humaine saturée** ; le **Retravail** n'en est pas un
+- Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long**, le **WIP inhabituel**, le **Flux à l'arrêt**, la **Validation qui attend**, la **Boucle de Retours** et la **Porte humaine saturée** ; le **Retravail** n'en est pas un
 - Une **Décision** fait sortir un ticket de À valider ; ses sens sont le **Feu vert**, la **Relance**, le **Refus** et le **Report**. Une **Relance** vers le développement est aussi un **Retour**, d'origine validation
 - Le **Débit sain** compte les **Livraisons saines** parmi les **Livraisons** du **Débit**
 - Une **Décision tenue** est un **Feu vert** ou un **Refus** que ni **Bug d'origine** ni **Réouverture** n'a démenti

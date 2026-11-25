@@ -304,6 +304,8 @@ export type ApiSignal =
   | { kind: 'stagnantReady'; project: string; ticket: SignalTicket; since: string; age: number }
   /** WIP inhabituel : `wip` dépasse `threshold`, le P85 du WIP quotidien des 90 derniers jours. */
   | { kind: 'unusualWip'; project: string; wip: number; threshold: number }
+  /** Flux à l'arrêt : `ready` Prêts (au moins 3) et aucune Transition depuis `since`, plus de 12 heures de Durée écoulée (`duration`), dans un Projet qui n'est pas en sommeil. */
+  | { kind: 'stalledFlow'; project: string; ready: number; since: string; duration: number }
   /** Validation qui attend : À valider depuis `since`, depuis plus de 24 heures de Durée écoulée (`duration`). */
   | { kind: 'waitingValidation'; project: string; ticket: SignalTicket; since: string; duration: number }
   /** Boucle de Retours : un ticket non fermé qui a subi `sendBacks` Retours, au moins 3. */
@@ -317,7 +319,7 @@ export interface SignalsResponse {
   timeZoneHonoured: boolean;
   projects: Array<{ id: string; name: string }>;
   unreadable: MetricsUnreadableProject[];
-  /** Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Validation qui attend, Boucle de Retours), le plus en excès d'abord. */
+  /** Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Flux à l'arrêt, Validation qui attend, Boucle de Retours), le plus en excès d'abord. */
   signals: ApiSignal[];
 }
 
@@ -849,6 +851,11 @@ export interface MetricsActivity {
   cells: number[][];
   /** Somme des `cells`. */
   total: number;
+  /**
+   * Heures à l'arrêt : la Durée écoulée de la période (ms) pendant laquelle le Flux d'un Projet était à l'arrêt, sommée sur les Projets, et le nombre
+   * moyen de Prêts pendant ce temps, pesé par lui (null sans Heures à l'arrêt).
+   */
+  stalled: { duration: number; ready: number | null };
 }
 
 /**

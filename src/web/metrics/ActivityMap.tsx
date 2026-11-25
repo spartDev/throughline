@@ -13,6 +13,7 @@ import { useElementWidth } from './useElementWidth';
 /** Les marges de la grille : les jours à gauche, les heures au-dessus. */
 const LABELS = { left: 30, top: 18, right: 2 };
 const GAP = 2;
+const HOUR = 3_600_000;
 const COLUMNS = 24;
 const ROWS = 7;
 const HOUR_LABELS = [0, 6, 12, 18];
@@ -159,7 +160,15 @@ export function ActivityPanel({ activity, timeZone }: { activity: MetricsActivit
           : t.description(t.transitions(format.formatCount(view.total), view.total), timeZone) +
             (peak ? t.peak(slotLabel(peak.weekday, peak.hour, language), format.formatCount(peak.count)) : '')) +
         // Les comptes sont bruts : 30 jours comptent quatre ou cinq lundis, et la carte ne le corrige pas.
-        t.rawCounts
+        t.rawCounts +
+        // Les Heures à l'arrêt : quand rien n'a bougé alors que du travail attendait, ce que les cases vides de la carte ne disent pas à elles seules.
+        (activity.stalled.ready === null
+          ? t.noStalled
+          : t.stalled(
+              // Sous une heure, l'arrondi écrirait « 0 h » à côté d'une moyenne de Prêts : la carte dirait un arrêt de rien.
+              activity.stalled.duration < HOUR ? null : format.formatCount(Math.round(activity.stalled.duration / HOUR)),
+              format.formatDecimal(activity.stalled.ready, 1),
+            ))
       }
       legend={
         view.empty ? undefined : (

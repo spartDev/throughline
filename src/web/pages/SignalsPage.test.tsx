@@ -172,6 +172,21 @@ describe('« À regarder » : les Signaux de relais', () => {
     expect(text(await screen.findByRole('tooltip'))).toContain('plus de 24 heures de Durée écoulée');
   });
 
+  it('montre le Flux à l’arrêt après le WIP inhabituel : le Projet mène à son kanban, la ligne dit ses Prêts et depuis quand rien n’avance, avec son aide', async () => {
+    const stalled: ApiSignal = { kind: 'stalledFlow', project: 'bdesk', ready: 9, since: '2026-10-23T03:00:00.000Z', duration: 15 * 3_600_000 };
+    stubSignals({ bdesk: [...BDESK, stalled, ...RELAYED], mpm: MPM });
+    renderApp('/');
+
+    const group = await screen.findByRole('region', { name: 'Flux à l’arrêt' });
+    const titled = screen.getAllByRole('region').filter((region) => region.hasAttribute('data-signal-group'));
+    expect(titled.map((region) => region.querySelector('h2')?.textContent).slice(3, 6)).toEqual(['WIP inhabituel', 'Flux à l’arrêt', 'Validation qui attend']);
+    expect(within(group).getByRole('link', { name: 'beads-desktop' }).getAttribute('href')).toBe('/p/bdesk/kanban');
+    expect(text(group)).toContain('beads-desktop : 9 tickets Prêts, et aucune Transition depuis 15 h');
+
+    await userEvent.setup().hover(within(group).getByRole('button', { name: 'À propos de Flux à l’arrêt' }));
+    expect(text(await screen.findByRole('tooltip'))).toContain('ce que le Signal ne dit pas');
+  });
+
   it('laisse les autres groupes sans aide', async () => {
     stubSignals();
     renderApp('/');

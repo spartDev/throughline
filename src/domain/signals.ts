@@ -3,6 +3,7 @@ import { type Drift, driftsOf } from './drift';
 import { STAGNANT_READY_AFTER } from './health';
 import { type MetricsInput, percentile, type ProjectAnalysis, type TrackedTicket } from './metrics';
 import { reviewOf } from './review';
+import { stalledFlowAt } from './stalledFlow';
 import { isWorking } from './timeline';
 
 const DAY = 86_400_000;
@@ -67,6 +68,15 @@ export type Signal =
       wip: number;
       /** Le P85 du WIP quotidien des 90 derniers jours, que `wip` dépasse. */
       threshold: number;
+    }
+  | {
+      kind: 'stalledFlow';
+      project: string;
+      /** Ses Prêts à `now`. */
+      ready: number;
+      /** Sa dernière Transition, tous tickets confondus. */
+      since: number;
+      duration: number;
     };
 
 export interface SignalsOptions {
@@ -104,6 +114,10 @@ export function signalsOf(projects: MetricsInput[], { now, timeZone }: SignalsOp
     const wip = wipAt(project.analysis, now);
     return threshold !== null && wip > threshold ? [{ kind: 'unusualWip', project: project.id, wip, threshold }] : [];
   });
+  const stalledFlows = projects.flatMap((project): Signal[] => {
+    const stalled = stalledFlowAt(project.analysis, now);
+    return stalled ? [{ kind: 'stalledFlow', project: project.id, ...stalled, duration: now - stalled.since }] : [];
+  });
   const waitingValidations = projects.flatMap((project) =>
     project.analysis.tickets.flatMap((ticket): Signal[] => {
       const since = awaitingHumanSince(ticket, now);
@@ -122,7 +136,7 @@ export function signalsOf(projects: MetricsInput[], { now, timeZone }: SignalsOp
       return sendBacks >= SEND_BACK_LOOP_FROM ? [{ kind: 'sendBackLoop', project: project.id, ticket: named(ticket), sendBacks }] : [];
     }),
   );
-  return [...drifts, ...longBlockages, ...stagnantReadies, ...unusualWips, ...waitingValidations, ...sendBackLoops].sort(bySeverity);
+  return [...drifts, ...longBlockages, ...stagnantReadies, ...unusualWips, ...stalledFlows, ...waitingValidations, ...sendBackLoops].sort(bySeverity);
 }
 
 /** Les statuts datés du ticket jusqu'à `now` : le Dernier commit, tel que les Signaux le lisent. */
@@ -165,7 +179,7 @@ function usualWip(analysis: ProjectAnalysis, now: number): number | null {
 }
 
 /** L'ordre des groupes, de la page « À regarder ». */
-const KIND_ORDER: Signal['kind'][] = ['drift', 'longBlockage', 'stagnantReady', 'unusualWip', 'waitingValidation', 'sendBackLoop'];
+const KIND_ORDER: Signal['kind'][] = ['drift', 'longBlockage', 'stagnantReady', 'unusualWip', 'stalledFlow', 'waitingValidation', 'sendBackLoop'];
 
 /** Combien un Signal dépasse ce qui est normal : plus c'est grand, plus il vient tôt dans son groupe. */
 function excess(signal: Signal): number {
@@ -178,6 +192,7 @@ function excess(signal: Signal): number {
       return signal.age;
     case 'unusualWip':
       return signal.threshold === 0 ? Number.POSITIVE_INFINITY : signal.wip / signal.threshold;
+    case 'stalledFlow':
     case 'waitingValidation':
       return signal.duration;
     case 'sendBackLoop':
