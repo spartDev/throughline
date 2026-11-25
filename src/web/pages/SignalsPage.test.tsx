@@ -198,7 +198,7 @@ describe('« À regarder » : les Signaux de relais', () => {
     expect(titled.map((region) => region.querySelector('h2')?.textContent).slice(4, 7)).toEqual(['Flux à l’arrêt', 'Stock en hausse', 'Validation qui attend']);
     expect(within(group).getByRole('link', { name: 'beads-desktop' }).getAttribute('href')).toBe('/p/bdesk/kanban');
     expect(text(group)).toContain(
-      'beads-desktop : Stock de 21 à 40 tickets en 3 semaines (21 → 25 → 31 → 40), plus d’Arrivées que de Livraisons chaque semaine',
+      'beads-desktop : Stock de 21 à 40 tickets en 3 semaines (21 → 25 → 31 → 40), en hausse chaque semaine',
     );
 
     await userEvent.setup().hover(within(group).getByRole('button', { name: 'À propos de Stock en hausse' }));

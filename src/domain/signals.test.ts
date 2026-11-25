@@ -509,7 +509,7 @@ describe('signalsOf : Stock en hausse', () => {
       (signal) => signal.kind === 'risingStock',
     );
 
-  it('un Écart Arrivées–Débit positif chacune des 3 semaines pleines et un Stock qui croît de 25 % : le Signal, avec la courbe du Stock', () => {
+  it('un Stock qui monte chacune des 3 semaines pleines et croît de 25 % : le Signal, avec la courbe du Stock', () => {
     expect(risingAt(stockFlow(8, weekly([4, 1], [4, 1], [4, 1])))).toEqual([{ kind: 'risingStock', project: 'p', stock: [8, 11, 14, 17], since: WEEK_1 }]);
   });
 
@@ -527,11 +527,76 @@ describe('signalsOf : Stock en hausse', () => {
     expect(risingAt(stockFlow(13, weekly([1, 0], [1, 0], [1, 0])))).toEqual([]);
   });
 
-  it('il faut au moins 3 tickets de plus : de 4 à 6 non, de 4 à 7 oui ; un Renoncement sort du Stock sans être une Livraison', () => {
+  it('un Renoncement sort du Stock comme une Livraison : de 4 à 6, la dernière semaine ne monte pas ; de 4 à 7, 3 tickets pile, oui', () => {
     const declined = stockFlow(4, [...weekly([1, 0], [1, 0]), { at: midWeek(3), arrivals: 1, declines: 1 }]);
 
     expect(risingAt(declined)).toEqual([]);
     expect(risingAt(stockFlow(4, weekly([1, 0], [1, 0], [1, 0])))).toMatchObject([{ stock: [4, 5, 6, 7] }]);
+  });
+
+  it('chaque semaine se juge sur le Stock d’alors : une Réouverture, une reclôture ou un label `declined` de la semaine en cours n’y change rien', () => {
+    /** Remplace le ticket du même identifiant : le même Projet, dont un ticket a changé depuis. */
+    const changed = (tickets: MetricsTicket[], replacement: MetricsTicket) => tickets.map((t) => (t.id === replacement.id ? replacement : t));
+    /** s0, le ticket du Stock de départ livré la semaine 1 : rouvert ou reclos le mercredi de la semaine en cours, ou étiqueté depuis. */
+    const deliveredInWeek1: [string, number][] = [
+      ['open', LONG_AGO],
+      ['closed', midWeek(1)],
+    ];
+    const week1Flat = stockFlow(8, weekly([3, 3], [4, 1], [4, 1]));
+
+    expect(risingAt(week1Flat)).toEqual([]);
+    expect(risingAt(changed(week1Flat, ticket('s0', [...deliveredInWeek1, ['open', midWeek(4)]])))).toEqual([]);
+    expect(risingAt(changed(week1Flat, ticket('s0', [...deliveredInWeek1, ['open', midWeek(4)], ['closed', midWeek(4) + HOUR]])))).toEqual([]);
+    expect(risingAt(changed(week1Flat, ticket('s0', deliveredInWeek1, { labels: ['declined'] })))).toEqual([]);
+
+    // 9 → 12 → 12 → 15 : s1, livré la semaine 2, est rouvert cette semaine. Le Stock d'alors ne monte pas la semaine 2.
+    const week2Flat = stockFlow(9, weekly([4, 1], [1, 1], [4, 1]));
+    expect(risingAt(changed(week2Flat, ticket('s1', [['open', LONG_AGO], ['closed', midWeek(2)], ['open', midWeek(4)]])))).toEqual([]);
+
+    // Et un Stock en hausse le reste, avec la même courbe, quand la semaine en cours ferme 5 tickets de son Stock.
+    expect(risingAt(stockFlow(8, [...weekly([4, 1], [4, 1], [4, 1]), { at: midWeek(4), arrivals: 0, deliveries: 5 }]))).toMatchObject([
+      { stock: [8, 11, 14, 17] },
+    ]);
+  });
+
+  it('aucune semaine ne porte plus de la moitié de la hausse : une rafale d’un jour suivie d’un ticket de plus par semaine n’en est pas un', () => {
+    expect(risingAt(stockFlow(100, weekly([25, 0], [1, 0], [1, 0])))).toEqual([]); // 100 → 125 → 126 → 127
+    expect(risingAt(stockFlow(40, weekly([20, 0], [1, 0], [1, 0])))).toEqual([]); // 40 → 60 → 61 → 62
+    expect(risingAt(stockFlow(21, weekly([4, 0], [6, 0], [9, 0])))).toMatchObject([{ stock: [21, 25, 31, 40] }]);
+  });
+
+  it('la moitié pile de la hausse sur une semaine suffit, un peu plus non', () => {
+    expect(risingAt(stockFlow(10, weekly([2, 0], [1, 0], [1, 0])))).toMatchObject([{ stock: [10, 12, 13, 14] }]);
+    expect(risingAt(stockFlow(10, weekly([3, 0], [1, 0], [1, 0])))).toEqual([]); // 10 → 13 → 14 → 15
+  });
+
+  it('un Stock qui retombe après une rafale n’est pas en hausse, même avec plus d’Arrivées que de Livraisons chaque semaine : 8 → 30 → 12 → 11', () => {
+    // La rafale de 22 tickets de la semaine 1 est presque toute renoncée ensuite : 19 la semaine 2, 2 la semaine 3. Aucune Livraison.
+    const burst = Array.from({ length: 22 }, (_, i) =>
+      i < 21
+        ? ticket(
+            `b${i}`,
+            [
+              ['open', midWeek(1)],
+              ['closed', midWeek(i < 19 ? 2 : 3)],
+            ],
+            { labels: ['declined'] },
+          )
+        : ticket(`b${i}`, [['open', midWeek(1)]]),
+    );
+
+    expect(risingAt([...stockFlow(8, weekly([0, 0], [1, 0], [1, 0])), ...burst])).toEqual([]);
+  });
+
+  it('la limite : une rafale à cheval sur dimanche minuit, partagée à parts égales entre deux semaines, en fait un si la troisième monte aussi', () => {
+    const sundayNight = new Date('2026-10-04T23:30:00+02:00').getTime();
+    const tickets = stockFlow(20, [
+      { at: sundayNight, arrivals: 10 },
+      { at: sundayNight + HOUR, arrivals: 10 },
+      { at: midWeek(3), arrivals: 1 },
+    ]);
+
+    expect(risingAt(tickets)).toEqual([{ kind: 'risingStock', project: 'p', stock: [20, 30, 40, 41], since: WEEK_1 }]);
   });
 
   it('compte les semaines dans le Fuseau de l’utilisateur : lundi 00:30 à Paris est encore dimanche en UTC', () => {
@@ -563,7 +628,7 @@ describe('signalsOf : Stock en hausse', () => {
     ]);
   });
 
-  it('les Epics ne sont ni des Arrivées ni du Stock', () => {
+  it('les Epics ne sont pas du Stock, ni celles d’avant ni celles créées pendant les 3 semaines', () => {
     const epics = (k: number) => Array.from({ length: 3 }, (_, i) => ticket(`e${k}.${i}`, [['open', midWeek(k)]], { type: 'epic' }));
     const allEpics = [...epics(1), ...epics(2), ...epics(3), ticket('e0', [['open', LONG_AGO]], { type: 'epic' })];
 
@@ -571,12 +636,17 @@ describe('signalsOf : Stock en hausse', () => {
     expect(risingAt([...stockFlow(8, weekly([4, 1], [4, 1], [4, 1])), ...allEpics])).toMatchObject([{ stock: [8, 11, 14, 17] }]);
   });
 
-  it('se range après le Flux à l’arrêt et avant les Validations qui attendent, la plus forte croissance d’abord', () => {
-    const both = signalsOf(
-      [
-        { id: 'lent', name: 'lent', analysis: analyzeProject(stockFlow(8, weekly([4, 1], [4, 1], [4, 1])), NO_DECLARED_STATUSES) },
-        { id: 'vif', name: 'vif', analysis: analyzeProject(stockFlow(4, weekly([3, 0], [3, 0], [3, 0])), NO_DECLARED_STATUSES) },
-      ],
+  it('se range après le Flux à l’arrêt et avant les Validations qui attendent, la plus forte hausse en tickets d’abord, puis la plus forte croissance', () => {
+    // Des Projets nommés dans l'ordre inverse de celui attendu : l'ordre ne vient pas de leur nom.
+    const flows: Array<[id: string, tickets: MetricsTicket[]]> = [
+      ['a', stockFlow(0, weekly([1, 0], [1, 0], [1, 0]))], // 0 → 3 : parti de zéro, mais la plus petite hausse
+      ['b', stockFlow(1, weekly([100, 0], [100, 0], [100, 0]))], // 1 → 301
+      ['c', stockFlow(0, weekly([100, 0], [100, 0], [100, 0]))], // 0 → 300 : la même hausse que b, de plus bas
+      ['lent', stockFlow(8, weekly([4, 1], [4, 1], [4, 1]))], // 8 → 17
+      ['vif', stockFlow(4, weekly([3, 0], [3, 0], [3, 0]))], // 4 → 13 : la même hausse que lent, de plus bas
+    ];
+    const ranked = signalsOf(
+      flows.map(([id, tickets]) => ({ id, name: id, analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) })),
       { now: NOW, timeZone: PARIS },
     );
     const moved = ticket('m', [
@@ -590,6 +660,6 @@ describe('signalsOf : Stock en hausse', () => {
     const kinds = [...new Set(signalsAt([...stockFlow(8, weekly([4, 1], [4, 1], [4, 1])), moved, waiting]).map(({ kind }) => kind))];
 
     expect(kinds.slice(kinds.indexOf('stalledFlow'))).toEqual(['stalledFlow', 'risingStock', 'waitingValidation']);
-    expect(both.filter(({ kind }) => kind === 'risingStock').map(({ project }) => project)).toEqual(['vif', 'lent']);
+    expect(ranked.filter(({ kind }) => kind === 'risingStock').map(({ project }) => project)).toEqual(['c', 'b', 'vif', 'lent', 'a']);
   });
 });

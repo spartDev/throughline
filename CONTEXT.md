@@ -254,7 +254,7 @@ La Durée écoulée d'une période pendant laquelle le Flux d'un Projet était �
 _English_: Stalled hours
 
 **Stock en hausse**:
-Un Projet dont l'Écart Arrivées–Débit est positif chacune des 3 dernières semaines pleines (du lundi au dimanche, dans le Fuseau de l'utilisateur ; la semaine en cours n'en est pas une) et dont le Stock a crû sur ces 3 semaines d'au moins 25 % (25 % pile compris) et d'au moins 3 tickets, du début de la première semaine à la fin de la dernière : de 4 à 5, ou de 0 à 1, le Stock ne monte pas. Il dit que le Stock monte, pas pourquoi. Une rafale d'un jour, comme la planification d'une Epic, n'en fait pas un : elle ne rend positive qu'une semaine.
+Un Projet dont le Stock a monté chacune des 3 dernières semaines pleines (du lundi au dimanche, dans le Fuseau de l'utilisateur ; la semaine en cours n'en est pas une) et a crû sur ces 3 semaines d'au moins 25 % (25 % pile compris) et d'au moins 3 tickets, du début de la première semaine à la fin de la dernière, sans qu'une semaine porte plus de la moitié de cette hausse (la moitié pile compte). Chaque semaine se juge sur le Stock d'alors, lu à ses bornes : ce qui arrive après (une Réouverture, une nouvelle clôture, un label `declined` posé après coup) ne change pas son verdict. Il dit que le Stock monte, pas pourquoi. Une rafale d'un jour, comme la planification d'une Epic, n'en fait pas un : elle porte presque toute la hausse sur une semaine. Sa limite : une rafale à cheval sur dimanche minuit, partagée à parts égales entre deux semaines, en fait un si la troisième monte aussi.
 _English_: Rising inventory
 _Avoid_: afflux, surcharge
 
@@ -427,7 +427,7 @@ _Avoid_: objectif, output, critères d'acceptation
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
 - Une **Dérive** compare le **Cycle Time** en cours d'un ticket à son **Cycle Time de référence**
 - Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long**, le **WIP inhabituel**, le **Flux à l'arrêt**, le **Stock en hausse**, la **Validation qui attend**, la **Boucle de Retours** et la **Porte humaine saturée** ; le **Retravail** n'en est pas un
-- Le **Stock en hausse** lit l'**Écart Arrivées–Débit** de chaque semaine et la croissance du **Stock** sur les mêmes semaines
+- Le **Stock en hausse** lit le **Stock** aux bornes de chaque semaine, tel qu'il était alors, et pas l'**Écart Arrivées–Débit**, dont une **Réouverture** annule rétroactivement une **Livraison**
 - Une **Décision** fait sortir un ticket de À valider ; ses sens sont le **Feu vert**, la **Relance**, le **Refus** et le **Report**. Une **Relance** vers le développement est aussi un **Retour**, d'origine validation
 - Le **Débit sain** compte les **Livraisons saines** parmi les **Livraisons** du **Débit**
 - Une **Décision tenue** est un **Feu vert** ou un **Refus** que ni **Bug d'origine** ni **Réouverture** n'a démenti

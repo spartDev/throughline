@@ -307,8 +307,9 @@ export type ApiSignal =
   /** Flux à l'arrêt : `ready` Prêts (au moins 3) et aucune Transition depuis `since`, plus de 12 heures de Durée écoulée (`duration`), dans un Projet qui n'est pas en sommeil. */
   | { kind: 'stalledFlow'; project: string; ready: number; since: string; duration: number }
   /**
-   * Stock en hausse : l'Écart Arrivées–Débit est positif chacune des 3 dernières semaines pleines, et le Stock (tickets non fermés, hors Epics) a crû d'au
-   * moins 25 % et d'au moins 3 tickets. `stock` : le Stock au début de la première semaine, puis à la fin de chacune ; `since` : le début de la première.
+   * Stock en hausse : le Stock (tickets non fermés, hors Epics) a monté chacune des 3 dernières semaines pleines, d'au moins 25 % et d'au moins 3 tickets
+   * en tout, sans qu'une semaine porte plus de la moitié de la hausse. `stock` : le Stock au début de la première semaine, puis à la fin de chacune ;
+   * `since` : le début de la première.
    */
   | { kind: 'risingStock'; project: string; stock: number[]; since: string }
   /** Validation qui attend : À valider depuis `since`, depuis plus de 24 heures de Durée écoulée (`duration`). */

@@ -208,11 +208,9 @@ function excess(signal: Signal): number {
     case 'stalledFlow':
     case 'waitingValidation':
       return signal.duration;
-    case 'risingStock': {
-      // La croissance relative du Stock, de sa première valeur à sa dernière : partir de zéro est la plus forte.
-      const [from, to] = [signal.stock[0] as number, signal.stock.at(-1) as number];
-      return from === 0 ? Number.POSITIVE_INFINITY : to / from;
-    }
+    case 'risingStock':
+      // La hausse du Stock en tickets, de sa première valeur à sa dernière ; à hausse égale, `stockFrom` départage.
+      return (signal.stock.at(-1) as number) - (signal.stock[0] as number);
     case 'sendBackLoop':
       return signal.sendBacks;
   }
@@ -220,11 +218,21 @@ function excess(signal: Signal): number {
 
 const idOf = (signal: Signal) => ('ticket' in signal ? signal.ticket.id : '');
 
-/** Par sorte, puis du plus en excès au moins en excès ; à égalité, par Projet puis par ticket, pour un ordre stable. */
+/**
+ * Le Stock de départ d'un Stock en hausse (0 pour les autres sortes). À hausse égale, la croissance relative est d'autant plus forte que le Stock partait
+ * de bas : le plus bas d'abord.
+ */
+const stockFrom = (signal: Signal) => (signal.kind === 'risingStock' ? (signal.stock[0] as number) : 0);
+
+/**
+ * Par sorte, puis du plus en excès au moins en excès ; à égalité, du Stock en hausse qui croît le plus au moins, puis par Projet puis par ticket, pour un
+ * ordre stable.
+ */
 function bySeverity(a: Signal, b: Signal): number {
   return (
     KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
     excess(b) - excess(a) ||
+    stockFrom(a) - stockFrom(b) ||
     (a.project < b.project ? -1 : a.project > b.project ? 1 : 0) ||
     (idOf(a) < idOf(b) ? -1 : idOf(a) > idOf(b) ? 1 : 0)
   );

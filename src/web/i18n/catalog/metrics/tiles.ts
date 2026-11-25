@@ -39,7 +39,7 @@ const fr = {
     stalledFlow:
       'Un Projet a au moins 3 tickets Prêts et aucun ticket n’a changé de statut depuis plus de 12 heures de Durée écoulée, nuits comprises. Rien n’avance alors que du travail attend : il faut regarder pourquoi, ce que le Signal ne dit pas, et un agent peut travailler sans changer de statut. Les Epics ne comptent pas. Un Projet sans Transition depuis plus de 7 jours dort, et n’en a pas.',
     risingStock:
-      'Un Projet a créé plus de tickets qu’il n’en a livré chacune des 3 dernières semaines pleines (du lundi au dimanche), et son Stock, ses tickets non fermés hors Epics, a crû d’au moins 25 % et d’au moins 3 tickets sur ces 3 semaines. Le Signal dit que le Stock monte, pas pourquoi. Ce n’est pas une rafale d’un jour, comme la planification d’une Epic : il faut 3 semaines de suite.',
+      'Le Stock d’un Projet, ses tickets non fermés hors Epics, a monté chacune des 3 dernières semaines pleines (du lundi au dimanche) : d’au moins 25 % et d’au moins 3 tickets en tout, sans qu’une semaine porte plus de la moitié de la hausse. Le Signal dit que le Stock monte, pas pourquoi. Ce n’est pas une rafale d’un jour, comme la planification d’une Epic : il faut 3 semaines de suite.',
     sendBackLoop:
       'Un ticket non fermé revenu au moins 3 fois au développement après une relecture, une intégration ou une validation (des Retours). Le défaut revient, ou le besoin est flou : mieux vaut regarder le ticket que relancer un tour de plus.',
   },
@@ -263,7 +263,7 @@ const en: typeof fr = {
     stalledFlow:
       'A project has at least 3 Ready tickets and no ticket has changed status for more than 12 hours of Elapsed time, nights included. Nothing moves while work is waiting: look into why, which the Signal does not say, and an agent can work without changing a status. Epics do not count. A project with no Transition for more than 7 days is dormant and has none.',
     risingStock:
-      'A project created more tickets than it delivered in each of the last 3 full weeks (Monday to Sunday), and its Inventory, its tickets not closed apart from Epics, grew by at least 25% and by at least 3 tickets over those 3 weeks. The Signal says the Inventory is rising, not why. It is not a one-day burst, like planning an Epic: it takes 3 weeks in a row.',
+      'A project’s Inventory, its tickets not closed apart from Epics, rose in each of the last 3 full weeks (Monday to Sunday): by at least 25% and by at least 3 tickets in all, with no week carrying more than half of the rise. The Signal says the Inventory is rising, not why. It is not a one-day burst, like planning an Epic: it takes 3 weeks in a row.',
     sendBackLoop:
       'A ticket not yet closed that went back to development at least 3 times after a review, an integration or a validation (Send-backs). The defect keeps coming back, or the need is unclear: better look at the ticket than run one more round.',
   },

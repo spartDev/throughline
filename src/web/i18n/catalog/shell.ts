@@ -147,7 +147,7 @@ const fr = {
      * sur 3 semaines : toujours au pluriel.
      */
     risingStock: (stock: readonly string[]) =>
-      `Stock de ${stock[0]} à ${stock.at(-1)} tickets en ${stock.length - 1} semaines (${stock.join(' → ')}), plus d’Arrivées que de Livraisons chaque semaine`,
+      `Stock de ${stock[0]} à ${stock.at(-1)} tickets en ${stock.length - 1} semaines (${stock.join(' → ')}), en hausse chaque semaine`,
     waitingValidation: (duration: string) => `À valider depuis ${duration}`,
     /** `count` : le nombre écrit, toujours au moins 3 (le seuil de la Boucle de Retours) : toujours au pluriel. */
     sendBackLoop: (count: string) => `${count} Retours au développement, sans être fermé`,
@@ -438,7 +438,7 @@ const en: typeof fr = {
       `${wip} ${n === 1 ? 'ticket' : 'tickets'} in progress, above ${threshold}, the P85 of daily WIP over the last 90 days`,
     stalledFlow: (ready: string, duration: string) => `${ready} Ready tickets, and no Transition for ${duration}`,
     risingStock: (stock: readonly string[]) =>
-      `Inventory up from ${stock[0]} to ${stock.at(-1)} tickets in ${stock.length - 1} weeks (${stock.join(' → ')}), more Arrivals than Deliveries every week`,
+      `Inventory up from ${stock[0]} to ${stock.at(-1)} tickets in ${stock.length - 1} weeks (${stock.join(' → ')}), rising every week`,
     waitingValidation: (duration: string) => `Awaiting validation for ${duration}`,
     sendBackLoop: (count: string) => `${count} Send-backs to development, still not closed`,
   },

@@ -155,7 +155,7 @@ describe('rapport de rétrospective : les Signaux de relais', () => {
     });
     expect(build(metrics(), rising)).toContain(
       '### Flux à l’arrêt\n\n- beads-desktop : 4 tickets Prêts, et aucune Transition depuis 1 j\n\n' +
-        '### Stock en hausse\n\n- beads-desktop : Stock de 21 à 40 tickets en 3 semaines (21 → 25 → 31 → 40), plus d’Arrivées que de Livraisons chaque semaine',
+        '### Stock en hausse\n\n- beads-desktop : Stock de 21 à 40 tickets en 3 semaines (21 → 25 → 31 → 40), en hausse chaque semaine',
     );
   });
 
