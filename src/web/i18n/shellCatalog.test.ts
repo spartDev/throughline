@@ -67,8 +67,26 @@ describe('the shared helpers of the shell zone, in English', () => {
   });
 
   it('says the signals', () => {
-    expect(signalKinds('en').map(({ label }) => label)).toEqual(['Drift', 'Long blockage', 'Stale ready', 'Unusual WIP', 'Stalled flow', 'Waiting validation', 'Send-back loop']);
-    expect(SIGNAL_KINDS.map(({ label }) => label)).toEqual(['Dérive', 'Blocage long', 'Prêt qui stagne', 'WIP inhabituel', 'Flux à l’arrêt', 'Validation qui attend', 'Boucle de Retours']);
+    expect(signalKinds('en').map(({ label }) => label)).toEqual([
+      'Drift',
+      'Long blockage',
+      'Stale ready',
+      'Unusual WIP',
+      'Stalled flow',
+      'Rising inventory',
+      'Waiting validation',
+      'Send-back loop',
+    ]);
+    expect(SIGNAL_KINDS.map(({ label }) => label)).toEqual([
+      'Dérive',
+      'Blocage long',
+      'Prêt qui stagne',
+      'WIP inhabituel',
+      'Flux à l’arrêt',
+      'Stock en hausse',
+      'Validation qui attend',
+      'Boucle de Retours',
+    ]);
     expect(signalSentence({ kind: 'longBlockage', project: 'p', ticket, since: '', duration: 4 * DAY }, 'en')).toBe(
       `blocked while in progress for 4${NBSP}d`,
     );
@@ -86,6 +104,12 @@ describe('the shared helpers of the shell zone, in English', () => {
     );
     expect(signalSentence({ kind: 'stalledFlow', project: 'p', ready: 3, since: '', duration: 13 * 3_600_000 })).toBe(
       `3 tickets Prêts, et aucune Transition depuis 13${NBSP}h`,
+    );
+    expect(signalSentence({ kind: 'risingStock', project: 'p', stock: [21, 25, 31, 40], since: '' })).toBe(
+      'Stock de 21 à 40 tickets en 3 semaines (21 → 25 → 31 → 40), en hausse chaque semaine',
+    );
+    expect(signalSentence({ kind: 'risingStock', project: 'p', stock: [980, 1100, 1180, 1250], since: '' }, 'en')).toBe(
+      'Inventory up from 980 to 1,250 tickets in 3 weeks (980 → 1,100 → 1,180 → 1,250), rising every week',
     );
     expect(signalSentence({ kind: 'drift', project: 'p', ticket, cycleTime: 2 * DAY, reference: DAY, scope: 'project' }, 'en')).toBe(
       `2${NBSP}d of Cycle Time so far, above 1${NBSP}d, the P85 of the project’s deliveries`,

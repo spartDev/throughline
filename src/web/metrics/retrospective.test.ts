@@ -145,8 +145,24 @@ describe('rapport de rétrospective : les Signaux de relais', () => {
     );
   });
 
+  it('le Stock en hausse se range après le Flux à l’arrêt, au nom de son Projet, avec la courbe du Stock', () => {
+    const rising = signalsResponse({
+      projects: [{ id: 'bdesk', name: 'beads-desktop' }],
+      signals: [
+        { kind: 'stalledFlow', project: 'bdesk', ready: 4, since: '2026-11-01T19:00:00.000Z', duration: 25 * 3_600_000 },
+        { kind: 'risingStock', project: 'bdesk', stock: [21, 25, 31, 40], since: '2026-10-11T22:00:00.000Z' },
+      ],
+    });
+    expect(build(metrics(), rising)).toContain(
+      '### Flux à l’arrêt\n\n- beads-desktop : 4 tickets Prêts, et aucune Transition depuis 1 j\n\n' +
+        '### Stock en hausse\n\n- beads-desktop : Stock de 21 à 40 tickets en 3 semaines (21 → 25 → 31 → 40), en hausse chaque semaine',
+    );
+  });
+
   it('comptent dans « aucun Signal »', () => {
-    expect(build(undefined, signalsResponse({ signals: [] }))).toContain('ni aucune Boucle de Retours en ce moment.');
+    const none = build(undefined, signalsResponse({ signals: [] }));
+    expect(none).toContain('aucun Stock en hausse');
+    expect(none).toContain('ni aucune Boucle de Retours en ce moment.');
   });
 });
 
