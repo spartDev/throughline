@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeHealth } from './health';
 import { analyzeProject, type MetricsTicket } from './metrics';
-import { stalledTimeIn } from './stalledFlow';
+import { stalledFlowAt, stalledTimeIn } from './stalledFlow';
 import { NO_DECLARED_STATUSES } from './statuses';
 
 const HOUR = 3_600_000;
@@ -81,5 +81,37 @@ describe('Heures à l’arrêt', () => {
     const quiet = { id: 'a', name: 'A', analysis: analysis([mover('m', h(0), h(20))]) };
 
     expect(computeHealth([quiet], { period: { range: '7d' }, now: new Date(h(40)), timeZone: 'UTC' }).activity.stalled).toEqual({ duration: 0, ready: null });
+  });
+
+  it('ne compte pas les Transitions des Epics, comme la Carte d’activité : une Epic qui bouge ne remet pas le compte à zéro', () => {
+    const epic: MetricsTicket = { ...ticket('e', [['open', h(-100)], ['in_progress', h(16)]]), type: 'epic' };
+    const tickets = [...threeReady(), mover('m', h(0), h(20)), epic];
+
+    expect(stalledTimeIn(analysis(tickets), h(-10), h(30)).duration).toBe(8 * HOUR);
+  });
+
+  it('dit la même chose que le Signal : à chaque instant, le Flux est à l’arrêt exactement quand le Signal le dit', () => {
+    // Des historiques tirés d'un générateur fixe : créations, démarrages, retours, clôtures et Blocages par dépendance, à toute heure sur 20 jours.
+    let seed = 7;
+    const random = () => (seed = (seed * 16_807) % 2_147_483_647) / 2_147_483_647;
+    const STATUSES = ['open', 'in_progress', 'blocked', 'closed', 'deferred'];
+    for (let run = 0; run < 40; run++) {
+      const tickets = Array.from({ length: 4 + Math.floor(random() * 6) }, (_, i): MetricsTicket => {
+        let at = h(random() * 200);
+        const steps: [string, number][] = [['open', at]];
+        for (let k = Math.floor(random() * 4); k > 0; k--) {
+          at += random() * 60 * HOUR;
+          const status = STATUSES[Math.floor(random() * STATUSES.length)] as string;
+          if (status !== steps.at(-1)?.[0]) steps.push([status, at]);
+        }
+        const base = ticket(`t${i}`, steps);
+        return i > 0 && random() < 0.3 ? { ...base, dependencies: [{ type: 'blocks', target: `t${i - 1}`, addedAt: new Date(steps[0]![1]) }] } : base;
+      });
+      const project = analysis(tickets);
+      for (let at = h(0); at < h(20 * 24); at += HOUR / 2) {
+        const slice = stalledTimeIn(project, at, at + 1).duration;
+        expect(slice, `historique ${run}, ${new Date(at).toISOString()}`).toBe(stalledFlowAt(project, at) === null ? 0 : 1);
+      }
+    }
   });
 });

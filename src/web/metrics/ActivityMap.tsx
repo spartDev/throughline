@@ -164,7 +164,11 @@ export function ActivityPanel({ activity, timeZone }: { activity: MetricsActivit
         // Les Heures à l'arrêt : quand rien n'a bougé alors que du travail attendait, ce que les cases vides de la carte ne disent pas à elles seules.
         (activity.stalled.ready === null
           ? t.noStalled
-          : t.stalled(format.formatCount(Math.round(activity.stalled.duration / HOUR)), format.formatDecimal(activity.stalled.ready, 1)))
+          : t.stalled(
+              // Sous une heure, l'arrondi écrirait « 0 h » à côté d'une moyenne de Prêts : la carte dirait un arrêt de rien.
+              activity.stalled.duration < HOUR ? null : format.formatCount(Math.round(activity.stalled.duration / HOUR)),
+              format.formatDecimal(activity.stalled.ready, 1),
+            ))
       }
       legend={
         view.empty ? undefined : (

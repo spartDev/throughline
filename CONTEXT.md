@@ -240,7 +240,7 @@ Un WIP d'un Projet au-dessus du 85ᵉ centile de son WIP quotidien des 90 dernie
 _English_: Unusual WIP
 
 **Flux à l'arrêt**:
-Un Projet qui a au moins 3 Prêts et dont aucun ticket n'a fait de Transition depuis plus de 12 heures de Durée écoulée (12 heures pile ne l'est pas). Un Projet dont la dernière Transition a plus de 7 jours dort : il n'est pas à l'arrêt, il n'est pas en marche, et un Projet sans aucune Transition non plus. La création d'un ticket n'est pas une Transition. Il dit que rien n'avance alors que du travail attend, pas pourquoi : un agent peut travailler sans changer de statut.
+Un Projet qui a au moins 3 Prêts et dont aucun ticket n'a fait de Transition depuis plus de 12 heures de Durée écoulée (12 heures pile ne l'est pas). Un Projet dont la dernière Transition a plus de 7 jours dort : il n'est pas à l'arrêt, il n'est pas en marche, et un Projet sans aucune Transition non plus. La création d'un ticket n'est pas une Transition, et les Transitions des Epics ne comptent pas, comme sur la Carte d'activité : les Epics ne sont mesurées nulle part. Il dit que rien n'avance alors que du travail attend, pas pourquoi : un agent peut travailler sans changer de statut.
 _English_: Stalled flow
 _Avoid_: agents inactifs, famine
 

@@ -34,28 +34,61 @@ export interface StalledTime {
 
 /**
  * La durée de la fenêtre `[start, end)` pendant laquelle le Flux du Projet était à l'arrêt. Entre deux Transitions T0 et T1, il peut l'être de T0 + 12 h
- * à min(T1, T0 + 7 j), quand le Projet a au moins 3 Prêts ; ses Prêts ne changent qu'aux débuts de segment de ses tickets (une création, la fin d'un
- * Blocage par une dépendance retirée), où l'on relit leur nombre. Avant la première Transition, le Projet n'a jamais été en marche : rien ne compte.
+ * à min(T1, T0 + 7 j), quand le Projet a au moins 3 Prêts. Avant la première Transition, le Projet n'a jamais été en marche : rien ne compte.
+ *
+ * Un seul parcours du temps : les entrées et sorties de la colonne Prêt de tous les tickets, triées, tiennent le compte des Prêts à jour, au lieu de le
+ * relire sur tous les tickets à chaque changement (un coût au carré du nombre de tickets sur un long historique).
  */
 export function stalledTimeIn(analysis: ProjectAnalysis, start: number, end: number): StalledTime {
   const transitions = transitionsOf(analysis);
-  const changes = [...new Set(analysis.tickets.flatMap((ticket) => ticket.timeline.segments.map((segment) => segment.from)))].sort((a, b) => a - b);
+  const moves = readyMoves(analysis);
   let duration = 0;
   let readyTime = 0;
+  let ready = 0;
+  let next = 0;
+  /** Avance le compte des Prêts jusqu'à `at` compris, comme `columnAt` lit la colonne d'un instant. */
+  const advanceTo = (at: number) => {
+    for (; next < moves.length && (moves[next] as ReadyMove).at <= at; next++) ready += (moves[next] as ReadyMove).delta;
+  };
   transitions.forEach((at, i) => {
     const from = Math.max(start, at + STALLED_FLOW_AFTER);
     const to = Math.min(end, transitions[i + 1] ?? Number.POSITIVE_INFINITY, at + DORMANT_AFTER);
     if (from >= to) return;
-    const cuts = [from, ...changes.filter((instant) => instant > from && instant < to), to];
-    for (let k = 0; k + 1 < cuts.length; k++) {
-      const [a, b] = [cuts[k] as number, cuts[k + 1] as number];
-      const ready = readyAt(analysis, a);
-      if (ready < STALLED_FLOW_READY_FROM) continue;
-      duration += b - a;
-      readyTime += ready * (b - a);
+    advanceTo(from);
+    let cursor = from;
+    while (cursor < to) {
+      const change = next < moves.length ? (moves[next] as ReadyMove).at : Number.POSITIVE_INFINITY;
+      const until = Math.min(to, change);
+      if (ready >= STALLED_FLOW_READY_FROM) {
+        duration += until - cursor;
+        readyTime += ready * (until - cursor);
+      }
+      cursor = until;
+      if (cursor < to) advanceTo(cursor);
     }
   });
   return { duration, readyTime };
+}
+
+/** Un ticket entre dans la colonne Prêt (+1) ou en sort (-1) à cet instant. */
+interface ReadyMove {
+  at: number;
+  delta: 1 | -1;
+}
+
+/** Les entrées et sorties de la colonne Prêt de tous les tickets du Projet, triées par instant : les segments de leurs chronologies. */
+function readyMoves(analysis: ProjectAnalysis): ReadyMove[] {
+  const moves: ReadyMove[] = [];
+  for (const ticket of analysis.tickets) {
+    const { segments } = ticket.timeline;
+    segments.forEach((segment, i) => {
+      if (segment.column !== 'ready') return;
+      moves.push({ at: segment.from, delta: 1 });
+      const after = segments[i + 1];
+      if (after) moves.push({ at: after.from, delta: -1 });
+    });
+  }
+  return moves.sort((a, b) => a.at - b.at);
 }
 
 /**
