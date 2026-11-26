@@ -13,6 +13,7 @@ import type { MetricsInput, MetricsOptions, TrackedTicket } from './metrics';
 import { isDevelopment } from './review';
 import { isHandoffStatus } from './statuses';
 import type { Step } from './timeline';
+import { weekHourMap } from './weekHours';
 
 /**
  * Décisions, Décision tenue et Coût d'attention (bdesk-3e9.3, CONTEXT.md). Tout se lit dans les Transitions déjà analysées (`TicketTimeline.steps`), sans
@@ -21,6 +22,8 @@ import type { Step } from './timeline';
  *
  * Une Décision appartient à la période de sa Transition. Le Coût d'attention, lui, appartient à celle de la Livraison qu'il décrit, datée de sa dernière
  * clôture comme le Débit : il compte toutes les Décisions qu'elle a demandées, à quelque date que ce soit.
+ *
+ * La Carte des Décisions (bdesk-3e9.7) range les Décisions de la période par jour de la semaine et heure, sur la grille de la Carte d'activité (`weekHourMap`).
  *
  * Livraison prouvée et Livraison sans Feu vert (bdesk-3e9.5) : ici aussi, parce qu'elles se lisent dans les mêmes Décisions et sur la même Livraison passée
  * par la chaîne, et que l'onglet Décisions les montre avec elles (`MetricsDecisions.evidencedDeliveries`). Une Livraison y appartient, comme pour le Coût
@@ -153,8 +156,8 @@ interface Window {
 
 /**
  * Les Décisions de la période demandée, sur l'union des tickets des Projets (la Vue globale, ou un seul Projet) : leur nombre par sens, les Feux verts et
- * les Refus tenus ou démentis, le Coût d'attention, et les mêmes semaine par semaine sur les 12 semaines de la Tendance longue ; les Livraisons prouvées de
- * la période, sans les semaines. La période en cours est comptée jusqu'à `asOf` (maintenant), la semaine en cours aussi.
+ * les Refus tenus ou démentis, le Coût d'attention, et les mêmes semaine par semaine sur les 12 semaines de la Tendance longue ; les Livraisons prouvées et
+ * la Carte des Décisions de la période, sans les semaines. La période en cours est comptée jusqu'à `asOf` (maintenant), la semaine en cours aussi.
  */
 export function computeDecisions(projects: MetricsInput[], { period, now, timeZone }: MetricsOptions): MetricsDecisions {
   const instant = now.getTime();
@@ -179,6 +182,10 @@ export function computeDecisions(projects: MetricsInput[], { period, now, timeZo
     ...measured(window),
     provisional: asOf < current.end,
     evidencedDeliveries: evidencedIn(tickets, window),
+    decisionMap: weekHourMap(
+      tickets.flatMap(({ decisions }) => decisions.flatMap(({ at }) => (within(at, window) ? [at] : []))),
+      timeZone,
+    ),
     weeks: weeksUntil(instant, LONG_TREND_WEEKS, timeZone).map((week) => ({
       from: week.from,
       to: week.to,

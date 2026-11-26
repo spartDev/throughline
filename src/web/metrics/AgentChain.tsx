@@ -33,10 +33,11 @@ const ROUNDS = ['one', 'two', 'three', 'fourOrMore'] as const;
 /**
  * La Chaîne d'agents (bdesk-pz0.8, ADR 0007) : ce que la relecture, l'intégration et la validation font des Livraisons de la période. Dans l'ordre du
  * ticket : l'Acceptation au premier passage en tête, avec sa tendance, puis la Couverture de relecture, les Tours par Livraison, les Retours par origine, le
- * Taux d'échec après relecture ; dessous, la Décomposition du Cycle Time et l'Attente humaine. La page ne la montre que si une Livraison de la période est
+ * Taux d'échec après relecture ; dessous, la Décomposition du Cycle Time. La page ne la montre, dans l'onglet Flux, que si une Livraison de la période est
  * passée par un Statut de relais (`MetricsReview.handedOff`) : ailleurs, elle ne dirait que des zéros.
  *
- * L'Attente humaine est une tuile à part (`HumanWaitTile`), posée en fin de section : l'onglet Décisions la reprendra (bdesk-3e9.7).
+ * L'Attente humaine (`HumanWaitTile`) n'y est plus : c'est le temps que la chaîne vous attend, et elle est dans l'onglet Décisions (bdesk-3e9.7), qui existe
+ * dès qu'une Livraison est passée par un Statut de relais (son Projet l'a porté : `MetricsResponse.handoff`).
  */
 export function AgentChainSection({ review, breakdown, comparison }: { review: MetricsReview; breakdown: MetricsCycleTimeBreakdown; comparison: Comparison }) {
   const titleId = useId();
@@ -54,12 +55,7 @@ export function AgentChainSection({ review, breakdown, comparison }: { review: M
         <SendBacksTile review={review} className={AGENT_CHAIN_SPANS[3]} />
         <FailureRateAfterReviewTile review={review} className={AGENT_CHAIN_SPANS[4]} />
       </div>
-      <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-3">
-        <div className="min-w-0 @min-[56rem]:col-span-2">
-          <CycleTimeBreakdownPanel breakdown={breakdown} />
-        </div>
-        <HumanWaitTile breakdown={breakdown} />
-      </div>
+      <CycleTimeBreakdownPanel breakdown={breakdown} />
     </section>
   );
 }
@@ -210,8 +206,8 @@ function FailureRateAfterReviewTile({ review, className }: { review: MetricsRevi
 
 /**
  * L'Attente humaine des Livraisons de la période : la médiane en grand, le P85 et sa part du Cycle Time cumulé dessous. Médiane et P85 ne portent que sur les
- * Livraisons qui ont attendu ; sous 4, ils sont donnés mais ne disent pas grand-chose : la tuile est en pointillé et le dit. Une tuile à part, que l'onglet
- * Décisions reprendra (bdesk-3e9.7).
+ * Livraisons qui ont attendu ; sous 4, ils sont donnés mais ne disent pas grand-chose : la tuile est en pointillé et le dit. Dans l'onglet Décisions
+ * (bdesk-3e9.7), à côté des Décisions par sens.
  */
 export function HumanWaitTile({ breakdown, className }: { breakdown: MetricsCycleTimeBreakdown; className?: string }) {
   const t = useT();
@@ -250,9 +246,10 @@ export function HumanWaitTile({ breakdown, className }: { breakdown: MetricsCycl
 
 /**
  * Des comptes en lignes : un libellé, le nombre, et sa part de `total` s'il est donné, à une décimale comme les autres parts de la section. L'écran
- * n'écrit que le nombre ; les lecteurs d'écran entendent ce qu'il compte (`noun`) : « 1 Tour, 8 Livraisons, 66,7 % ».
+ * n'écrit que le nombre ; les lecteurs d'écran entendent ce qu'il compte (`noun`) : « 1 Tour, 8 Livraisons, 66,7 % ». L'onglet Décisions s'en sert aussi
+ * (les Décisions par sens, les preuves qui manquent).
  */
-function CountList({
+export function CountList({
   label,
   rows,
   noun,

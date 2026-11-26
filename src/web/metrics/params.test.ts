@@ -15,6 +15,7 @@ import {
   spanInDays,
   withDimension,
   withPeriod,
+  withTab,
 } from './params';
 
 /**
@@ -23,6 +24,7 @@ import {
  *   ?range=7d|30d|90d       les N derniers jours (30d par défaut)
  *   ?from=AAAA-MM-JJ&to=…   ou une plage personnalisée, bornes incluses (les mêmes noms que l'API)
  *   ?by=type|priority|project  le découpage (type par Projet, Projet en Vue globale)
+ *   ?tab=decisions|flow     l'onglet, quand la page en a (Décisions par défaut)
  */
 
 const TODAY = '2026-11-02';
@@ -43,7 +45,7 @@ describe('MIN_CUSTOM_DAY', () => {
 
 describe('parseMetricsParams : la période', () => {
   it('prend les 30 derniers jours quand l’adresse n’en dit rien', () => {
-    expect(parse('')).toEqual({ period: { kind: 'preset', range: '30d' }, by: 'type', notices: [] });
+    expect(parse('')).toEqual({ period: { kind: 'preset', range: '30d' }, by: 'type', tab: 'decisions', notices: [], tabNotice: null });
     expect(DEFAULT_PERIOD).toEqual({ kind: 'preset', range: '30d' });
   });
 
@@ -204,6 +206,42 @@ describe('isCivilDay et spanInDays', () => {
     expect(spanInDays('0020-12-12', '0021-12-12')).toBe(366);
     // Référence indépendante (Python) : (date(2026, 11, 2) - date(20, 12, 12)).days + 1
     expect(spanInDays('0020-12-12', '2026-11-02')).toBe(732_637);
+  });
+});
+
+describe('l’onglet (bdesk-3e9.7)', () => {
+  it('Décisions par défaut ; l’adresse peut demander Flux ou Décisions', () => {
+    expect(parse('').tab).toBe('decisions');
+    expect(parse('tab=flow')).toMatchObject({ tab: 'flow', notices: [], tabNotice: null });
+    expect(parse('tab=decisions&range=7d', 'global')).toMatchObject({ tab: 'decisions', period: { kind: 'preset', range: '7d' }, notices: [], tabNotice: null });
+  });
+
+  it('un onglet qui n’existe pas retombe sur Décisions et le dit à part : seule la réponse du serveur dit si la page a ses onglets', () => {
+    expect(parse('tab=chaine')).toEqual({
+      period: { kind: 'preset', range: '30d' },
+      by: 'type',
+      tab: 'decisions',
+      notices: [],
+      tabNotice: 'L’onglet « chaine » n’existe pas (decisions, flow) : l’onglet par défaut est affiché.',
+    });
+    // Les avis de la période et du découpage, eux, ne dépendent pas des onglets.
+    expect(parse('tab=chaine&range=12d')).toMatchObject({
+      notices: ['La période « 12d » n’existe pas (7d, 30d ou 90d). Les 30 derniers jours sont affichés.'],
+      tabNotice: 'L’onglet « chaine » n’existe pas (decisions, flow) : l’onglet par défaut est affiché.',
+    });
+  });
+
+  it('withTab écrit Flux et efface Décisions, celui par défaut ; la période et le découpage restent', () => {
+    expect(withTab(new URLSearchParams('range=7d&by=priority'), 'flow').toString()).toBe('range=7d&by=priority&tab=flow');
+    expect(withTab(new URLSearchParams('range=7d&tab=flow'), 'decisions').toString()).toBe('range=7d');
+  });
+
+  it('changer de période ou de découpage garde l’onglet', () => {
+    expect(withPeriod(new URLSearchParams('tab=flow'), { kind: 'preset', range: '90d' }).toString()).toBe('tab=flow&range=90d');
+    expect(withPeriod(new URLSearchParams('tab=flow&range=7d'), { kind: 'custom', from: '2026-10-01', to: '2026-10-15' }).toString()).toBe(
+      'tab=flow&from=2026-10-01&to=2026-10-15',
+    );
+    expect(withDimension(new URLSearchParams('tab=flow'), 'priority', 'project').toString()).toBe('tab=flow&by=priority');
   });
 });
 

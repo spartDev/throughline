@@ -238,6 +238,7 @@ export function computeMetrics(projects: MetricsInput[], { period: spec, now, ti
   const deliveredBefore = deliveriesIn(entries, compared);
   const arrived = arrivalsIn(entries, elapsed);
   const arrivedBefore = arrivalsIn(entries, compared);
+  const handoff = handoffOf(projects);
 
   return {
     range: resolved.range,
@@ -258,9 +259,10 @@ export function computeMetrics(projects: MetricsInput[], { period: spec, now, ti
     },
     buckets: throughputBuckets(bucketsOf(current, resolved.unit, timeZone), delivered, arrived),
     cycleTimeScatter: cycleTimeScatter(delivered),
-    cfd: cumulativeFlow(entries, columnsOf(handoffOf(projects)), current, timeZone, asOf),
+    cfd: cumulativeFlow(entries, columnsOf(handoff), current, timeZone, asOf),
     inProgress: inProgress(entries, asOf),
     slices: slicesOf(entries, projects, elapsed),
+    handoff,
   };
 }
 
@@ -454,7 +456,10 @@ function cycleTimeScatter(deliveries: Entry[]): MetricsCycleTimePoint[] {
     .sort((a, b) => compareText(a.deliveredAt, b.deliveredAt) || compareText(a.project, b.project) || compareText(a.id, b.id));
 }
 
-/** Les Statuts de relais qui ont leur colonne dans le CFD des Projets mesurés : ceux qui l'ont dans le CFD de l'un d'eux. */
+/**
+ * Les Statuts de relais des Projets mesurés (`MetricsReport.handoff`) : ceux qui ont leur colonne dans le CFD de l'un d'eux. Ce sont aussi les colonnes de
+ * relais de leur CFD commun, et ce qui donne à la page Métriques ses onglets Décisions et Flux.
+ */
 function handoffOf(projects: MetricsInput[]): HandoffStatus[] {
   return HANDOFF_STATUSES.filter((status) => projects.some(({ analysis }) => analysis.handoff.includes(status)));
 }

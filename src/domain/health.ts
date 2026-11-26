@@ -10,11 +10,10 @@ import type {
   MetricsReopening,
 } from '../shared/api';
 import { calendarElapsed, resolvePeriod } from './calendar';
-import { lruMemo } from './lru';
 import { reworkIn } from './rework';
 import { stalledTimeIn } from './stalledFlow';
 import { durationStats, type MetricsInput, type MetricsOptions, type TrackedTicket, trend } from './metrics';
-import { MAX_ZONE_FORMATTERS } from './time-zone';
+import { weekHourMap } from './weekHours';
 
 /**
  * Santé du flux : Efficacité du flux, Taux de Réouverture, Taux d'abandon, Renoncements, décomposition du Lead Time (avec
@@ -261,38 +260,13 @@ function readyAgesOf(entries: Entry[], asOf: number, previousAsOf: number, timeZ
 
 /* --- Carte d'activité --------------------------------------------------------------------------------------------- */
 
-const WEEKDAYS: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
-
-/** Le formateur d'un fuseau : un cache borné (le fuseau d'une requête vient du client), voir `lruMemo`. */
-const formatterOf = lruMemo(
-  MAX_ZONE_FORMATTERS,
-  (timeZone: string) => new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: '2-digit', hourCycle: 'h23' }),
-);
-
-/** Le jour de la semaine (0 pour le lundi) et l'heure du mur (0 à 23) de l'instant dans le fuseau. */
-function slotOf(instant: number, timeZone: string): { weekday: number; hour: number } {
-  const formatter = formatterOf(timeZone);
-  const parts = Object.fromEntries(formatter.formatToParts(instant).map((part) => [part.type, part.value]));
-  return { weekday: WEEKDAYS[parts.weekday ?? ''] ?? 0, hour: Number(parts.hour) % 24 };
-}
-
 /**
- * Les Transitions de la fenêtre par jour de la semaine et par heure. La création d'un ticket (son premier statut) n'est pas
+ * Les Transitions de la fenêtre par jour de la semaine et par heure (`weekHourMap`). La création d'un ticket (son premier statut) n'est pas
  * une Transition : c'est une Arrivée.
  */
 function activityOf(entries: Entry[], window: Window, timeZone: string): Omit<MetricsActivity, 'stalled'> {
-  const cells = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
-  let total = 0;
-  for (const { ticket } of entries) {
-    for (const step of ticket.timeline.steps.slice(1)) {
-      if (!within(step.at, window)) continue;
-      const { weekday, hour } = slotOf(step.at, timeZone);
-      const day = cells[weekday];
-      if (day) day[hour] = (day[hour] ?? 0) + 1;
-      total++;
-    }
-  }
-  return { cells, total };
+  const instants = entries.flatMap(({ ticket }) => ticket.timeline.steps.slice(1).flatMap((step) => (within(step.at, window) ? [step.at] : [])));
+  return weekHourMap(instants, timeZone);
 }
 
 /** Les Heures à l'arrêt de la fenêtre, sommées sur les Projets, et leurs Prêts en moyenne, pesée par le temps (`stalledTimeIn`). */

@@ -4,9 +4,9 @@ import type { MetricsResponse } from '../../shared/api';
 import { LanguageProvider } from '../i18n';
 import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import { TooltipProvider } from '../ui/Tip';
-import { AGENT_CHAIN_GRID, AGENT_CHAIN_SPANS, AgentChainSection } from './AgentChain';
+import { AGENT_CHAIN_GRID, AGENT_CHAIN_SPANS, AgentChainSection, HumanWaitTile } from './AgentChain';
 import { describeComparison } from './comparison';
-import { acceptanceTrendOf, agentChainFixture, ENOUGH_COVERAGE, plain, shownText, spokenText } from './testing';
+import { acceptanceTrendOf, agentChainFixture, ENOUGH_COVERAGE, NO_INTENT_SPLIT, plain, shownText, spokenText } from './testing';
 
 /**
  * La Chaîne d'agents (bdesk-pz0.8). Fixture (`agentChainFixture`) : 18 Livraisons, 14 passées par la chaîne, 12 relues dont 9 sans Retour (75 %, contre 60 %
@@ -28,6 +28,14 @@ function renderSection(data: MetricsResponse = agentChainFixture(), language: 'f
   return render(<LanguageProvider switchEnabled>{section}</LanguageProvider>);
 }
 
+/** L'Attente humaine, seule : elle n'est plus dans la section, mais dans l'onglet Décisions (bdesk-3e9.7). */
+const renderWait = (data: MetricsResponse = agentChainFixture()) =>
+  render(
+    <TooltipProvider>
+      <HumanWaitTile breakdown={data.cycleTimeBreakdown} />
+    </TooltipProvider>,
+  );
+
 /** `agentChainFixture` dont la relecture est modifiée par `review`. */
 const withReview = (review: Partial<MetricsResponse['review']>) => {
   const data = agentChainFixture();
@@ -47,7 +55,7 @@ const heard = (element: Element) => plain(spokenText(element));
 const trends = (element: HTMLElement) => [...element.querySelectorAll('[data-trend]')].map((trend) => [trend.getAttribute('data-trend'), trend.getAttribute('data-tone')]);
 
 describe('AgentChainSection : la Chaîne d’agents', () => {
-  it('montre, sous « Chaîne d’agents », les mesures dans l’ordre du ticket : l’Acceptation au premier passage en tête, l’Attente humaine en dernier', () => {
+  it('montre, sous « Chaîne d’agents », les mesures dans l’ordre du ticket : l’Acceptation au premier passage en tête, la Décomposition du Cycle Time en dernier', () => {
     renderSection();
 
     const section = screen.getByRole('region', { name: 'Chaîne d’agents' });
@@ -58,12 +66,11 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
       'Tours par Livraison',
       'Retours par origine',
       'Taux d’échec après relecture',
-      'Attente humaine',
     ]);
     const breakdown = within(section).getByRole('region', { name: 'Décomposition du Cycle Time' });
-    // La Décomposition du Cycle Time entre le Taux d'échec après relecture et l'Attente humaine.
     expect(tile('Taux d’échec après relecture').compareDocumentPosition(breakdown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(breakdown.compareDocumentPosition(tile('Attente humaine')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // L'Attente humaine est dans l'onglet Décisions (bdesk-3e9.7) : c'est le temps que la chaîne vous attend.
+    expect(screen.queryByRole('article', { name: 'Attente humaine' })).toBeNull();
   });
 
   it('donne à chaque mesure son aide, Décomposition du Cycle Time comprise', () => {
@@ -75,7 +82,6 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
       'Retours par origine',
       'Taux d’échec après relecture',
       'Décomposition du Cycle Time',
-      'Attente humaine',
     ]) {
       expect(screen.getByRole('button', { name: `À propos de ${name}` })).toBeTruthy();
     }
@@ -110,7 +116,7 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
     });
 
     it('sous 10 Livraisons relues : non significative, avec le motif et le taux observé en retrait, sans tendance', () => {
-      renderSection(withReview({ reviewed: 3, firstPassAcceptance: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false, minReviewed: 10, trend: acceptanceTrendOf(2 / 3, 0.5) } }));
+      renderSection(withReview({ reviewed: 3, firstPassAcceptance: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false, minReviewed: 10, trend: acceptanceTrendOf(2 / 3, 0.5) , byWrittenIntent: NO_INTENT_SPLIT } }));
 
       const acceptance = tile('Acceptation au premier passage');
       expect(acceptance.hasAttribute('data-indicative')).toBe(true);
@@ -126,7 +132,7 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
         withReview({
           reviewed: 0,
           coverage: 0,
-          firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, 0.5) },
+          firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, 0.5) , byWrittenIntent: NO_INTENT_SPLIT },
           roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
         }),
       );
@@ -255,9 +261,9 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
     });
   });
 
-  describe('Attente humaine', () => {
+  describe('Attente humaine (la tuile que montre l’onglet Décisions)', () => {
     it('donne la médiane, le P85 et la part du Cycle Time des Livraisons qui ont attendu', () => {
-      renderSection();
+      renderWait();
 
       const wait = tile('Attente humaine');
       expect(wait.hasAttribute('data-indicative')).toBe(false);
@@ -268,7 +274,7 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
     });
 
     it('sous 4 Livraisons qui ont attendu, les centiles sont donnés, en pointillé, avec la réserve', () => {
-      renderSection(withHumanWaits({ waited: 2, stats: { median: 3 * HOUR, p85: 5 * HOUR, n: 2 }, reliable: false }));
+      renderWait(withHumanWaits({ waited: 2, stats: { median: 3 * HOUR, p85: 5 * HOUR, n: 2 }, reliable: false }));
 
       const wait = tile('Attente humaine');
       expect(wait.hasAttribute('data-indicative')).toBe(true);
@@ -277,7 +283,7 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
     });
 
     it('sans Livraison qui a attendu, la tuile le dit', () => {
-      renderSection(withHumanWaits({ waited: 0, stats: { median: null, p85: null, n: 0 }, reliable: false, share: 0 }));
+      renderWait(withHumanWaits({ waited: 0, stats: { median: null, p85: null, n: 0 }, reliable: false, share: 0 }));
 
       const wait = tile('Attente humaine');
       expect(wait.hasAttribute('data-indicative')).toBe(false);
@@ -296,7 +302,6 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
       'Review rounds per delivery',
       'Send-backs by origin',
       'Change failure rate after review',
-      'Human wait',
     ]);
     expect(screen.getByRole('region', { name: 'Cycle Time breakdown' })).toBeTruthy();
     const acceptance = tile('First-pass acceptance');
@@ -304,7 +309,6 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
     expect(shown(acceptance)).toContain('75%9 of 12 with no Send-back');
     expect(heard(acceptance.querySelector('[data-trend]')!)).toMatch(/^Up by 15 points/);
     expect(shown(tile('Send-backs by origin'))).toContain('6Send-backs of the period’s Deliveries');
-    expect(shown(tile('Human wait'))).toContain('6 Deliveries waited');
   });
 });
 

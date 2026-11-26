@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActivityPanel } from './ActivityMap';
-import { emptyHealthFixture, healthFixture, plain, stubChartWidth } from './testing';
+import { TooltipProvider } from '../ui/Tip';
+import { ActivityPanel, DecisionMapPanel } from './ActivityMap';
+import { decisionsFixture, emptyHealthFixture, healthFixture, heldDecisionsFixture, plain, stubChartWidth } from './testing';
 
 beforeEach(() => stubChartWidth(640));
 afterEach(() => vi.restoreAllMocks());
@@ -17,7 +18,13 @@ function centerOf(target: SVGRectElement): { clientX: number; clientY: number } 
   return { clientX: (x ?? 0) + (width ?? 0) / 2, clientY: (y ?? 0) + (height ?? 0) / 2 };
 }
 
-const renderPanel = (activity = healthFixture().activity, timeZone = 'Europe/Paris') => render(<ActivityPanel activity={activity} timeZone={timeZone} />);
+/** La carte a son aide, une infobulle : elle se rend sous le `TooltipProvider` de l'application. */
+const renderPanel = (activity = healthFixture().activity, timeZone = 'Europe/Paris') =>
+  render(
+    <TooltipProvider>
+      <ActivityPanel activity={activity} timeZone={timeZone} />
+    </TooltipProvider>,
+  );
 
 /** La carte d'activité de la fixture : 100 Transitions, pic le jeudi de 9 h à 10 h (6). */
 describe('ActivityPanel : la carte d’activité', () => {
@@ -28,6 +35,16 @@ describe('ActivityPanel : la carte d’activité', () => {
     expect(plain(screen.getByText(/^100 Transitions/).textContent)).toContain(
       '100 Transitions par jour de la semaine et par heure, dans le fuseau Europe/Paris. Pic : jeudi, de 9 h à 10 h (6).',
     );
+  });
+
+  it('a son aide, comme la Carte des Décisions à côté d’elle : ce qu’elle compte, dans quel fuseau, et que ses comptes sont bruts', async () => {
+    renderPanel();
+
+    await userEvent.setup().hover(screen.getByRole('button', { name: 'À propos de Carte d’activité' }));
+    const help = plain((await screen.findByRole('tooltip')).textContent);
+    expect(help).toContain('Les Transitions de la période');
+    expect(help).toContain('dans votre fuseau');
+    expect(help).toContain('Comptes bruts');
   });
 
   it('dit que les comptes ne sont pas rapportés au nombre de chaque jour de la semaine dans la période : 30 jours comptent quatre ou cinq lundis', () => {
@@ -127,7 +144,7 @@ describe('ActivityPanel : la carte d’activité', () => {
   });
 
   it('garde des cases d’au moins 14 px de haut sur un petit écran, et d’au plus 26 px sur un grand', () => {
-    const height = () => Number(render(<ActivityPanel activity={healthFixture().activity} timeZone="Europe/Paris" />).container.querySelector('[data-cell]')?.getAttribute('height'));
+    const height = () => Number(renderPanel().container.querySelector('[data-cell]')?.getAttribute('height'));
 
     stubChartWidth(300);
     expect(height()).toBe(14 - 2);
@@ -175,6 +192,57 @@ describe('ActivityPanel : la carte d’activité', () => {
     const { container } = renderPanel(emptyHealthFixture().activity);
 
     expect(screen.getByText('Aucune Transition sur cette période.')).toBeTruthy();
-    expect(container.querySelector('svg')).toBeNull();
+    // Pas de grille : ni case ni dessin. L'icône de l'aide, elle, reste.
+    expect(container.querySelector('[data-cell]')).toBeNull();
+    expect(screen.queryByRole('img', { name: /^Carte d’activité/ })).toBeNull();
+  });
+});
+
+const renderDecisionMap = (map = heldDecisionsFixture().decisionMap) =>
+  render(
+    <TooltipProvider>
+      <DecisionMapPanel map={map} timeZone="Europe/Paris" />
+    </TooltipProvider>,
+  );
+
+/**
+ * La Carte des Décisions (bdesk-3e9.7) : la même grille que la Carte d'activité, la même légende et les mêmes niveaux, mais des Décisions. Fixture : 9
+ * Décisions, 5 le lundi de 9 h à 10 h, 3 le mercredi de 14 h à 15 h, 1 le vendredi de 22 h à 23 h.
+ */
+describe('DecisionMapPanel : la Carte des Décisions', () => {
+  it('dit ce qu’elle compte, dans quel fuseau, et le pic, sur la même grille que la Carte d’activité', () => {
+    const { container } = renderDecisionMap();
+
+    expect(screen.getByRole('region', { name: 'Carte des Décisions' })).toBeTruthy();
+    expect(plain(screen.getByText(/^9 Décisions/).textContent)).toBe(
+      '9 Décisions par jour de la semaine et par heure, dans le fuseau Europe/Paris. Pic : lundi, de 9 h à 10 h (5). ' +
+        'Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période.',
+    );
+    expect(screen.getByRole('img', { name: `Carte des Décisions : 9 Décisions, pic le lundi de 9${NBSP}h à 10${NBSP}h (5 Décisions).` })).toBeTruthy();
+    expect(container.querySelectorAll('[data-cell]')).toHaveLength(168);
+    expect(cell(container, 0, 9).getAttribute('data-count')).toBe('5');
+    expect(cell(container, 0, 9).getAttribute('data-level')).toBe('4');
+    expect(cell(container, 2, 14).getAttribute('data-level')).toBe('3'); // 3 sur 5
+    expect(cell(container, 4, 22).getAttribute('data-level')).toBe('1'); // 1 sur 5
+    expect(screen.getByRole('list', { name: 'Légende de la carte des Décisions' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'À propos de Carte des Décisions' })).toBeTruthy();
+  });
+
+  it('détaille une case au survol en Décisions', () => {
+    const { container } = renderDecisionMap();
+
+    fireEvent.pointerMove(hitArea(container), { ...centerOf(cell(container, 0, 9)), pointerType: 'mouse' });
+    expect(plain(container.querySelector('[data-chart-tooltip]')?.textContent)).toContain('5 Décisions');
+  });
+
+  it('dit qu’il n’y a eu aucune Décision sur la période plutôt que de dessiner une grille vide', () => {
+    const { container } = renderDecisionMap(decisionsFixture().decisionMap);
+
+    expect(screen.getByRole('status').textContent).toBe('Aucune Décision sur cette période.');
+    expect(container.querySelector('[data-cell]')).toBeNull();
+    expect(screen.queryByRole('img', { name: /^Carte des Décisions/ })).toBeNull();
+    expect(plain(screen.getByText(/^Les Décisions par jour de la semaine/).textContent)).toBe(
+      'Les Décisions par jour de la semaine et par heure, dans le fuseau Europe/Paris.',
+    );
   });
 });

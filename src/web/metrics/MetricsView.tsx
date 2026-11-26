@@ -19,7 +19,7 @@ import { BalancePanel } from './BalanceChart';
 import { BreakdownPanel } from './BreakdownChart';
 import { CfdPanel } from './CfdChart';
 import { SectionHeading } from './ChartParts';
-import { describeComparison } from './comparison';
+import { describeComparison, type Comparison } from './comparison';
 import { CycleTimePanel } from './CycleTimeChart';
 import { dayInZone } from './format';
 import { HealthTiles } from './HealthTiles';
@@ -27,7 +27,9 @@ import { JourneyPanel } from './JourneyPanel';
 import { LongTrendPanel } from './LongTrendPanel';
 import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
-import { parseMetricsParams, withDimension, withPeriod, type Dimension, type PeriodChoice, type Scope } from './params';
+import { DecisionsTab } from './DecisionsTab';
+import { MetricsTabs } from './MetricsTabs';
+import { parseMetricsParams, withDimension, withPeriod, withTab, type Dimension, type MetricsTab, type PeriodChoice, type Scope } from './params';
 import { ReadyAgePanel } from './ReadyAgeChart';
 import { CopyRetrospectiveButton, RetrospectivePreview, useRetrospective } from './RetrospectiveReport';
 import { ReworkPanel } from './ReworkPanel';
@@ -44,6 +46,12 @@ import './metrics.css';
 /** Ce que la page mesure : un Projet, ou tous (Vue globale). */
 export type MetricsScope = { kind: 'global' } | { kind: 'project'; project: { id: string; name: string } };
 
+/**
+ * La page a ses onglets (bdesk-3e9.7) quand un Projet de la vue a les Statuts de relais, déclarés ou portés, quelle que soit la période. Sans eux, la page est
+ * celle d'avant : le Flux seul, et `?tab=` n'y règle rien.
+ */
+const hasTabs = (data: MetricsResponse): boolean => data.handoff.length > 0;
+
 /** Aujourd'hui (AAAA-MM-JJ) dans ce fuseau. */
 const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString(), timeZone);
 
@@ -59,8 +67,9 @@ const NO_SCROLL_ANCHORING = { overflowAnchor: 'none' } as const;
 /**
  * Les métriques de flux d'un Projet ou de la Vue globale : réglages (période, découpage), tuiles, graphiques, santé du flux
  * (cinq tuiles, puis cinq cartes d'analyse : bdesk-38k.13), Chaîne d'agents quand une Livraison est passée par un Statut de relais
- * (bdesk-pz0.8) et tableau du découpage. La période et le découpage vivent dans
- * l'adresse (`?range=`, `?from=&to=`, `?by=`) : un lien les partage.
+ * (bdesk-pz0.8) et tableau du découpage. Quand un Projet de la vue a les Statuts de relais (`MetricsResponse.handoff`), tout cela est l'onglet Flux, à côté
+ * de l'onglet Décisions, qui s'ouvre d'abord (bdesk-3e9.7) ; la barre d'outils et le Parcours d'un ticket restent au-dessus des onglets. La période, le
+ * découpage et l'onglet vivent dans l'adresse (`?range=`, `?from=&to=`, `?by=`, `?tab=`) : un lien les partage.
  * Chaque changement remplace l'entrée de l'historique, comme au kanban : « Retour » quitte la page.
  *
  * Un rafraîchissement qui échoue garde les chiffres à l'écran (TanStack Query conserve `data`) : le bandeau du shell le
@@ -91,7 +100,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const elsewhere = lastAnswer !== undefined && !lastAnswer.honoured ? lastAnswer : undefined;
   const counted = elsewhere !== undefined && isKnownTimeZone(elsewhere.counted) ? elsewhere.counted : asked;
   const today = todayIn(counted);
-  const { period, by, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today, language), [searchParams, kind, today, language]);
+  const { period, by, tab, notices, tabNotice } = useMemo(() => parseMetricsParams(searchParams, kind, today, language), [searchParams, kind, today, language]);
 
   const query = useMetrics({ project: scope.kind === 'project' ? scope.project.id : undefined, period, timeZone: asked });
   // Les chiffres gardés (`isPlaceholderData`) sont ceux de la période précédente : tant qu'ils le sont, et que l'attente se remarque, l'écran le dit.
@@ -99,6 +108,8 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const retry = useRetryFocus(query);
   const projects = useProjects();
   const data = query.data;
+  // Un onglet inconnu ne se dit qu'à une page qui a ses onglets, donc avec la réponse du serveur : sans eux, la page ne lit pas `?tab=` et n'en parle pas.
+  const shownNotices = tabNotice !== null && data !== undefined && hasTabs(data) ? [...notices, tabNotice] : notices;
   // Quand le fuseau du navigateur change, le squelette remplace les chiffres de l'ancien (`useMetrics`) : il garde leur hauteur le temps de la réponse (bdesk-38k.81), pour que la page ne rétrécisse pas
   // et que le défilement de qui lisait plus bas ne soit pas perdu ; et les chiffres qui arrivent ne laissent pas l'ancrage du défilement suivre leur première mise en page. La hauteur est mesurée sur
   // l'enveloppe des chiffres, par Projet ou Vue globale : celle d'un autre Projet ne vaut pas pour celui-ci.
@@ -114,6 +125,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
 
   const changePeriod = useCallback((next: PeriodChoice) => setSearchParams((current) => withPeriod(current, next), { replace: true }), [setSearchParams]);
   const changeDimension = useCallback((next: Dimension) => setSearchParams((current) => withDimension(current, next, kind), { replace: true }), [setSearchParams, kind]);
+  const changeTab = useCallback((next: MetricsTab) => setSearchParams((current) => withTab(current, next), { replace: true }), [setSearchParams]);
 
   const projectHref = useCallback(
     (id: string) => {
@@ -151,7 +163,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
           précédente, comptés dans le même fuseau du serveur (jamais ceux d'un autre fuseau demandé : bdesk-38k.79). Retiré puis remis avec la réponse, il faisait sauter la page (bdesk-38k.71). */}
       {elsewhere !== undefined ? <ZoneNotice asked={asked} counted={elsewhere.counted} /> : null}
 
-      {notices.length > 0 ? <AddressNotices notices={notices} /> : null}
+      {shownNotices.length > 0 ? <AddressNotices notices={shownNotices} /> : null}
 
       {data ? (
         // Les chiffres partent, et le squelette les remplace, quand le fuseau du navigateur change (`useMetrics` ne garde pas ceux de l'ancien) ; le focus qu'ils tenaient (une puce de tendance,
@@ -163,7 +175,15 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
         <div ref={place.ref} style={place.settling ? NO_SCROLL_ANCHORING : undefined} className="min-w-0">
           {waiting ? <div aria-hidden="true" className="metrics-busy" /> : null}
           <div ref={keepFocusInZone} aria-busy={query.isPlaceholderData} className="flex min-w-0 flex-col gap-6">
-            <Content data={data} by={by} ctx={ctx} projectHref={projectHref} signalsHref={paths.signals(scope.kind === 'project' ? scope.project.id : undefined)} />
+            <Content
+              data={data}
+              by={by}
+              tab={tab}
+              onTabChange={changeTab}
+              ctx={ctx}
+              projectHref={projectHref}
+              signalsHref={paths.signals(scope.kind === 'project' ? scope.project.id : undefined)}
+            />
           </div>
         </div>
       ) : query.isError ? (
@@ -178,12 +198,16 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
 function Content({
   data,
   by,
+  tab,
+  onTabChange,
   ctx,
   projectHref,
   signalsHref,
 }: {
   data: MetricsResponse;
   by: Dimension;
+  tab: MetricsTab;
+  onTabChange: (tab: MetricsTab) => void;
   ctx: ReturnType<typeof useSeriesContext>;
   projectHref: (id: string) => string;
   signalsHref: string;
@@ -191,6 +215,54 @@ function Content({
   const texts = useT().metrics.metricsView;
   const { language } = useLanguage();
   const comparison = useMemo(() => describeComparison(data, language), [data, language]);
+  const showProject = data.projects.length > 1;
+  const flow = <FlowContent data={data} by={by} ctx={ctx} projectHref={projectHref} comparison={comparison} />;
+
+  return (
+    <>
+      {data.unreadable.length > 0 ? <UnreadableProjects projects={data.unreadable} /> : null}
+
+      {data.projects.length === 0 ? (
+        <Notice icon={FolderSearch} title={texts.noProjectTitle}>
+          {texts.noProjectBody}
+        </Notice>
+      ) : (
+        <>
+          <JourneyPanel tiles={data.tiles} health={data.health} cfd={data.cfd} comparison={comparison} signalsHref={signalsHref} />
+
+          {/* Les onglets (bdesk-3e9.7) : seulement si un Projet de la vue a les Statuts de relais, déclarés ou portés, quelle que soit la période. Sans eux, la page est celle d'avant. */}
+          {!hasTabs(data) ? (
+            flow
+          ) : (
+            <MetricsTabs tab={tab} onChange={onTabChange}>
+              {tab === 'decisions' ? <DecisionsTab data={data} comparison={comparison} ctx={ctx} showProject={showProject} /> : flow}
+            </MetricsTabs>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * Le Flux : les indicateurs, leur Tendance longue, les graphiques, la santé du flux, la Chaîne d'agents et l'analyse du flux, puis le découpage. Toute la page
+ * quand elle n'a pas d'onglets, son onglet Flux sinon.
+ */
+function FlowContent({
+  data,
+  by,
+  ctx,
+  projectHref,
+  comparison,
+}: {
+  data: MetricsResponse;
+  by: Dimension;
+  ctx: ReturnType<typeof useSeriesContext>;
+  projectHref: (id: string) => string;
+  comparison: Comparison;
+}) {
+  const texts = useT().metrics.metricsView;
+  const { language } = useLanguage();
   const view = useMemo(
     () => describeSlices({ slices: data.slices[by], dimension: by, tiles: data.tiles, ctx, projectHref }, language),
     [data, by, ctx, projectHref, language],
@@ -207,88 +279,76 @@ function Content({
 
   return (
     <>
-      {data.unreadable.length > 0 ? <UnreadableProjects projects={data.unreadable} /> : null}
+      <MetricTiles tiles={data.tiles} comparison={comparison} />
 
-      {data.projects.length === 0 ? (
-        <Notice icon={FolderSearch} title={texts.noProjectTitle}>
-          {texts.noProjectBody}
-        </Notice>
-      ) : (
-        <>
-          <JourneyPanel tiles={data.tiles} health={data.health} cfd={data.cfd} comparison={comparison} signalsHref={signalsHref} />
+      <LongTrendPanel trend={data.longTrend} />
 
-          <MetricTiles tiles={data.tiles} comparison={comparison} />
+      <section aria-labelledby={chartsId} className="flex min-w-0 flex-col gap-3">
+        <SectionHeading id={chartsId}>{texts.chartsHeading}</SectionHeading>
+        <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
+          <div className="min-w-0 @min-[56rem]:col-span-2">
+            <CfdPanel points={data.cfd} />
+          </div>
+          <div className="min-w-0">
+            <ThroughputPanel buckets={data.buckets} unit={data.bucket} running={comparison.running} asOfTime={comparison.asOfTime} />
+          </div>
+          <div className="min-w-0">
+            <CycleTimePanel
+              points={data.cycleTimeScatter}
+              span={span}
+              dimension={by}
+              ctx={ctx}
+              projectOrder={projectOrder}
+              timeZone={data.timeZone}
+              median={median}
+              p85={p85}
+              showProject={showProject}
+            />
+          </div>
+          <div className="min-w-0 @min-[56rem]:col-span-2">
+            <AgePanel tickets={data.inProgress} dimension={by} ctx={ctx} projectOrder={projectOrder} median={median} p85={p85} showProject={showProject} />
+          </div>
+        </div>
+      </section>
 
-          <LongTrendPanel trend={data.longTrend} />
+      <HealthTiles tiles={data.tiles} health={data.health} comparison={comparison} />
 
-          <section aria-labelledby={chartsId} className="flex min-w-0 flex-col gap-3">
-            <SectionHeading id={chartsId}>{texts.chartsHeading}</SectionHeading>
-            <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
-              <div className="min-w-0 @min-[56rem]:col-span-2">
-                <CfdPanel points={data.cfd} />
-              </div>
-              <div className="min-w-0">
-                <ThroughputPanel buckets={data.buckets} unit={data.bucket} running={comparison.running} asOfTime={comparison.asOfTime} />
-              </div>
-              <div className="min-w-0">
-                <CycleTimePanel
-                  points={data.cycleTimeScatter}
-                  span={span}
-                  dimension={by}
-                  ctx={ctx}
-                  projectOrder={projectOrder}
-                  timeZone={data.timeZone}
-                  median={median}
-                  p85={p85}
-                  showProject={showProject}
-                />
-              </div>
-              <div className="min-w-0 @min-[56rem]:col-span-2">
-                <AgePanel tickets={data.inProgress} dimension={by} ctx={ctx} projectOrder={projectOrder} median={median} p85={p85} showProject={showProject} />
-              </div>
-            </div>
-          </section>
+      {/* La Chaîne d'agents (bdesk-pz0.8) : seulement si une Livraison de la période est passée par un Statut de relais. Sans elle, la page est celle d'avant. */}
+      {data.review.handedOff > 0 ? <AgentChainSection review={data.review} breakdown={data.cycleTimeBreakdown} comparison={comparison} /> : null}
 
-          <HealthTiles tiles={data.tiles} health={data.health} comparison={comparison} />
+      <section aria-labelledby={flowId} className="flex min-w-0 flex-col gap-3">
+        <SectionHeading id={flowId}>{texts.flowHeading}</SectionHeading>
+        <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
+          <div className="min-w-0">
+            <BalancePanel buckets={data.buckets} unit={data.bucket} running={comparison.running} asOfTime={comparison.asOfTime} />
+          </div>
+          <div className="min-w-0">
+            <BreakdownPanel breakdown={data.health.leadTimeBreakdown} />
+          </div>
+          <div className="min-w-0">
+            <TypeMixPanel slices={data.slices.type} />
+          </div>
+          <div className="min-w-0">
+            <ActivityPanel activity={data.health.activity} timeZone={data.timeZone} />
+          </div>
+          <div className="min-w-0 @min-[56rem]:col-span-2">
+            <ReadyAgePanel
+              ages={data.health.readyAges}
+              dimension={by}
+              ctx={ctx}
+              projectOrder={projectOrder}
+              showProject={showProject}
+              timeZone={data.timeZone}
+              moment={comparison.running ? texts.momentAt(comparison.asOfTime) : texts.momentEnd}
+            />
+          </div>
+          <div className="min-w-0 @min-[56rem]:col-span-2">
+            <ReworkPanel rework={data.health.rework} ctx={ctx} showProject={showProject} />
+          </div>
+        </div>
+      </section>
 
-          {/* La Chaîne d'agents (bdesk-pz0.8) : seulement si une Livraison de la période est passée par un Statut de relais. Sans elle, la page est celle d'avant. */}
-          {data.review.handedOff > 0 ? <AgentChainSection review={data.review} breakdown={data.cycleTimeBreakdown} comparison={comparison} /> : null}
-
-          <section aria-labelledby={flowId} className="flex min-w-0 flex-col gap-3">
-            <SectionHeading id={flowId}>{texts.flowHeading}</SectionHeading>
-            <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
-              <div className="min-w-0">
-                <BalancePanel buckets={data.buckets} unit={data.bucket} running={comparison.running} asOfTime={comparison.asOfTime} />
-              </div>
-              <div className="min-w-0">
-                <BreakdownPanel breakdown={data.health.leadTimeBreakdown} />
-              </div>
-              <div className="min-w-0">
-                <TypeMixPanel slices={data.slices.type} />
-              </div>
-              <div className="min-w-0">
-                <ActivityPanel activity={data.health.activity} timeZone={data.timeZone} />
-              </div>
-              <div className="min-w-0 @min-[56rem]:col-span-2">
-                <ReadyAgePanel
-                  ages={data.health.readyAges}
-                  dimension={by}
-                  ctx={ctx}
-                  projectOrder={projectOrder}
-                  showProject={showProject}
-                  timeZone={data.timeZone}
-                  moment={comparison.running ? texts.momentAt(comparison.asOfTime) : texts.momentEnd}
-                />
-              </div>
-              <div className="min-w-0 @min-[56rem]:col-span-2">
-                <ReworkPanel rework={data.health.rework} ctx={ctx} showProject={showProject} />
-              </div>
-            </div>
-          </section>
-
-          <SliceTable view={view} dimension={by} />
-        </>
-      )}
+      <SliceTable view={view} dimension={by} />
     </>
   );
 }

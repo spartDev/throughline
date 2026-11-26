@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SignalsResponse } from '../../shared/api';
 import type { NamedMetricsResponse } from './api';
 import { buildRetrospective, escapeMarkdown, evolution } from './retrospective';
-import { acceptanceTrendOf, agentChainFixture, emptyHealthFixture, metricsFixture, plain, trendOf } from './testing';
+import { acceptanceTrendOf, agentChainFixture, emptyHealthFixture, metricsFixture, NO_INTENT_SPLIT, plain, trendOf } from './testing';
 import { MEASURES } from './trend';
 
 const DAY = 86_400_000;
@@ -205,7 +205,7 @@ describe('la Chaîne d’agents du rapport (bdesk-pz0.8)', () => {
   it('sous 10 Livraisons relues, la dit non significative sur sa ligne et dessous ; sous 4 attentes, met la réserve des centiles', () => {
     const text = build(
       withChain(
-        { reviewed: 3, firstPassAcceptance: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false, minReviewed: 10, trend: acceptanceTrendOf(2 / 3, null) } },
+        { reviewed: 3, firstPassAcceptance: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false, minReviewed: 10, trend: acceptanceTrendOf(2 / 3, null) , byWrittenIntent: NO_INTENT_SPLIT } },
         { waited: 1, stats: { median: 3 * HOUR, p85: 3 * HOUR, n: 1 }, reliable: false },
       ),
     );
@@ -224,7 +224,7 @@ describe('la Chaîne d’agents du rapport (bdesk-pz0.8)', () => {
   it('sans Livraison relue ni attente : des tirets, et ce qui manque dit en toutes lettres', () => {
     const text = build(
       withChain(
-        { reviewed: 0, firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, 0.5) } },
+        { reviewed: 0, firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, 0.5) , byWrittenIntent: NO_INTENT_SPLIT } },
         { waited: 0, stats: { median: null, p85: null, n: 0 }, reliable: false, share: 0 },
       ),
     );

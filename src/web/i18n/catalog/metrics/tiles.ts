@@ -57,6 +57,32 @@ const fr = {
       'Le Cycle Time cumulé des Livraisons de la période, en six parts qui s’additionnent : le temps de chaque Statut de relais (Relecture, Intégration, Attente humaine), le Blocage, et le reste du travail, coupé au premier Retour entre Développement et Correction. Il dit où passe le temps de travail.',
     humanWait:
       'Le temps qu’une Livraison a passé À valider, hors Blocage : elle attendait votre test, votre décision ou votre Feu vert. Médiane et P85 des seules Livraisons qui ont attendu, et part de ce temps dans le Cycle Time cumulé de la période. Sous 4 Livraisons qui ont attendu, les centiles ne sont pas dignes de foi.',
+    /** Les mesures de l'onglet Décisions (bdesk-3e9.7, `DecisionsTab.tsx`). */
+    heldDecisions:
+      'Les Feux verts et les Refus de la période que rien n’a démentis : un Feu vert l’est quand la Livraison qui le suit est rouverte ou reçoit un Bug d’origine, un Refus quand le ticket est rouvert. C’est tout ce que l’historique peut dire d’une Décision : pas qu’elle était bonne, seulement que rien ne l’a contredite. Provisoire tant que la période court.',
+    heldDecisionsWeekly:
+      'Les Feux verts et les Refus de chacune des 12 dernières semaines, datés de leur Décision, et ceux que rien n’a démentis depuis, à la même échelle : l’écart, ce sont les Décisions démenties. Une Décision récente n’a pas encore eu le temps d’être démentie.',
+    decisionSenses:
+      'Les Décisions de la période, les sorties de À valider, selon le statut où elles mènent le ticket : Feu vert (vers une Livraison ou En intégration), Relance (de nouveau dans la chaîne), Refus (fermé sans Livraison) ou Report (sorti de la chaîne sans être fermé).',
+    declines:
+      'Les tickets fermés sur la période avec le label declined : vous avez décidé de ne pas les faire. Ni Livraisons ni Abandons, ils ne comptent ni dans le Débit ni dans le Lead Time. Ni bon ni mauvais en soi : renoncer est aussi une décision.',
+    evidencedDeliveries:
+      'Part des Livraisons de la période passées par la chaîne (au moins un Statut de relais depuis leur dernière Réouverture) qui réunissent les quatre preuves : une Intention écrite à leur premier démarrage, un Tour de relecture, un passage En intégration et votre Feu vert. Une Intention écrite que l’historique ne permet pas de lire manque. Seuls comptent les Projets qui ont À valider.',
+    withoutGreenLight:
+      'Les Livraisons de la période passées par un Statut de relais depuis leur dernière Réouverture, mais fermées sans Feu vert entre-temps : la chaîne les a livrées sans votre décision. Le travail fait à la main, hors chaîne, n’y est jamais. Seuls comptent les Projets qui ont À valider.',
+    attentionCost:
+      'Le nombre moyen de Décisions qu’ont demandées les Livraisons de la période passées par la chaîne, toutes leurs Décisions comprises, même d’avant une Réouverture. Chaque Relance l’augmente : c’est une fois de plus où vous avez dû juger. Seuls comptent les Projets qui ont À valider.',
+    attentionCostWeekly:
+      'Le Coût d’attention de chacune des 12 dernières semaines : les Décisions qu’ont demandées les Livraisons passées par la chaîne de la semaine, datées de leur dernière clôture, par Livraison. Une semaine sans Livraison passée par la chaîne n’a pas de point.',
+    acceptanceWithIntent:
+      'L’Acceptation au premier passage des seules Livraisons relues qui avaient une Intention écrite, des critères d’acceptation non vides, à leur premier démarrage. À comparer avec celle des autres : écrire l’intention avant de démarrer évite-t-il des Retours ? Non significative sous 10 Livraisons relues.',
+    acceptanceWithoutIntent:
+      'L’Acceptation au premier passage des Livraisons relues sans Intention écrite à leur premier démarrage : sans critères d’acceptation, ou avec des critères écrits ensuite, ou que l’historique ne permet pas de lire. Non significative sous 10 Livraisons relues.',
+    /** La Carte d'activité (`ActivityMap.tsx`), dans l'analyse du flux et parmi les deux horloges de l'onglet Décisions. */
+    activityMap:
+      'Les Transitions de la période, les changements de statut des tickets, selon le jour de la semaine et l’heure où elles ont eu lieu, dans votre fuseau : une case par jour et par heure, du lundi au dimanche. La création d’un ticket n’en est pas une (c’est une Arrivée), et les Epics ne comptent pas. Comptes bruts, non rapportés au nombre de lundis ou de mardis de la période ; l’intensité d’une case se lit par rapport à la case la plus chargée de la carte. Elle dit quand le travail avance ; les Heures à l’arrêt, quand rien n’a bougé alors que du travail attendait.',
+    decisionMap:
+      'Les Décisions de la période selon le jour de la semaine et l’heure où vous les avez prises, dans votre fuseau, à lire à côté de la Carte d’activité : l’horloge de la chaîne face à la vôtre. Comptes bruts ; l’intensité d’une case se lit, comme sur la Carte d’activité, par rapport à la case la plus chargée de la carte.',
   },
   /** Le cadre d'une tuile et sa tendance (`Tile`, `Trend` de `metrics/Tiles.tsx`), partagés par toutes les tuiles. */
   tileFrame: {
@@ -295,6 +321,30 @@ const en: typeof fr = {
       'The cumulative Cycle Time of the period’s Deliveries, in six parts that add up: the time in each Handoff status (Review, Integration, Human wait), Blockage, and the rest of the work, split at the first Send-back into Development and Fixing. It tells where working time goes.',
     humanWait:
       'The time a Delivery spent Awaiting validation, outside Blockage: it was waiting for your test, your decision or your Green light. Median and P85 of the Deliveries that waited only, and the share of this time in the period’s cumulative Cycle Time. Under 4 Deliveries that waited, the percentiles are not trustworthy.',
+    heldDecisions:
+      'The period’s Green lights and Rejections that nothing has contradicted: a Green light is contradicted when the Delivery after it is reopened or gets an Escaped bug, a Rejection when the ticket is reopened. That is all the history can say about a Decision: not that it was right, only that nothing has contradicted it. Provisional while the period is running.',
+    heldDecisionsWeekly:
+      'Green lights and Rejections for each of the last 12 weeks, dated by their Decision, and those nothing has contradicted since, on the same scale: the gap is the contradicted Decisions. A recent Decision has not had time to be contradicted yet.',
+    decisionSenses:
+      'The period’s Decisions, the exits from Awaiting validation, by the status they take the ticket to: Green light (towards a Delivery or In integration), Rerun (back into the chain), Rejection (closed without a Delivery) or Postponement (out of the chain without being closed).',
+    declines:
+      'Tickets closed in the period with the declined label: you decided not to do them. Neither Deliveries nor Dropped tickets, they count neither in Throughput nor in Lead Time. Neither good nor bad in itself: declining is a decision too.',
+    evidencedDeliveries:
+      'Share of the period’s Deliveries through the chain (at least one Handoff status since their last Reopen) that bring together all four pieces of evidence: a Written intent when first started, a Review round, a pass In integration and your Green light. A Written intent the history cannot read is missing. Only Projects that have Awaiting validation count.',
+    withoutGreenLight:
+      'The period’s Deliveries that went through a Handoff status since their last Reopen, but were closed without a Green light in between: the chain delivered them without your decision. Work done by hand, outside the chain, is never listed. Only Projects that have Awaiting validation count.',
+    attentionCost:
+      'The average number of Decisions the period’s Deliveries through the chain asked for, all their Decisions included, even those before a Reopen. Each Rerun raises it: one more time you had to judge. Only Projects that have Awaiting validation count.',
+    attentionCostWeekly:
+      'The Attention cost of each of the last 12 weeks: the Decisions asked for by the week’s Deliveries through the chain, dated by their last closure, per Delivery. A week without a Delivery through the chain has no point.',
+    acceptanceWithIntent:
+      'First-pass acceptance of the Reviewed deliveries that had a Written intent, non-empty acceptance criteria, when first started. Compare it with the others: does writing the intent before starting avoid Send-backs? Not significant under 10 Reviewed deliveries.',
+    acceptanceWithoutIntent:
+      'First-pass acceptance of the Reviewed deliveries without a Written intent when first started: no acceptance criteria, criteria written later, or criteria the history cannot read. Not significant under 10 Reviewed deliveries.',
+    activityMap:
+      'The period’s Transitions, the tickets’ status changes, by the day of the week and hour they happened, in your time zone: one cell per day and hour, Monday to Sunday. Creating a ticket is not one (it is an Arrival), and Epics do not count. Raw counts, not adjusted for how many Mondays or Tuesdays the period has; a cell’s intensity is read against the busiest cell of the map. It tells when work moves; the Stalled hours, when nothing moved while work was waiting.',
+    decisionMap:
+      'The period’s Decisions by the day of the week and hour you made them, in your time zone, to read next to the Activity map: the chain’s clock against yours. Raw counts; as on the Activity map, a cell’s intensity is read against the busiest cell of its own map.',
   },
   tileFrame: {
     about: (title) => `About ${title}`,

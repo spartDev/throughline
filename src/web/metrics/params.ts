@@ -12,16 +12,25 @@ import { addDays } from './scales';
  *   ?range=7d|30d|90d          les N derniers jours, aujourd'hui compris (30d par défaut)
  *   ?from=AAAA-MM-JJ&to=…      ou une plage personnalisée, bornes incluses (les mêmes noms que l'API)
  *   ?by=type|priority|project  le découpage : type dans un Projet, Projet en Vue globale par défaut
+ *   ?tab=decisions|flow        l'onglet, quand la page en a (bdesk-3e9.7) : Décisions par défaut
  *
  * Une valeur que la page ne comprend pas ne bloque rien et ne passe pas en silence : la page retombe sur le réglage
  * par défaut et le dit (`notices`), pour qu'une faute de frappe dans un lien partagé ne donne pas d'autres chiffres
- * sans prévenir.
+ * sans prévenir. L'onglet seul attend la réponse du serveur pour le dire (`tabNotice`) : sans onglets, `?tab=` ne règle rien.
  */
 
 /** Une page de Projet (`/p/:projet/metrics`) ou la Vue globale (`/overview`). */
 export type Scope = 'project' | 'global';
 export type Dimension = 'type' | 'priority' | 'project';
 export type PeriodChoice = { kind: 'preset'; range: MetricsRangePreset } | { kind: 'custom'; from: string; to: string };
+/**
+ * Les onglets de la page, quand un Projet de la vue a les Statuts de relais (`MetricsResponse.handoff`) : Décisions, celui qui s'ouvre, puis Flux. Sans eux,
+ * la page n'a pas d'onglets, et montre le Flux.
+ */
+export type MetricsTab = 'decisions' | 'flow';
+
+export const TABS: readonly MetricsTab[] = ['decisions', 'flow'];
+export const DEFAULT_TAB: MetricsTab = 'decisions';
 
 export const PRESETS: readonly MetricsRangePreset[] = ['7d', '30d', '90d'];
 export const DEFAULT_RANGE: MetricsRangePreset = '30d';
@@ -38,6 +47,11 @@ export const MAX_CUSTOM_DAYS = 366;
 export { MIN_CUSTOM_DAY };
 
 const { range: RANGE, from: FROM, to: TO, by: BY } = METRICS_PARAMS;
+/**
+ * L'onglet n'est pas dans `METRICS_PARAMS` : ces noms-là sont aussi ceux qui ramènent un ancien lien de la Vue globale de l'accueil vers elle (`routes.tsx`), et
+ * aucun de ces liens n'avait d'onglet.
+ */
+const TAB = 'tab';
 
 const DAY_MS = 86_400_000;
 export const PRESET_DAYS: Record<MetricsRangePreset, number> = { '7d': 7, '30d': 30, '90d': 90 };
@@ -128,11 +142,33 @@ export function withDimension(params: URLSearchParams, by: Dimension, scope: Sco
   return next;
 }
 
+/**
+ * L'adresse avec cet onglet : celui par défaut (Décisions) n'y est pas écrit, comme la période et le découpage par défaut. Les autres réglages restent : changer
+ * d'onglet garde la période, et changer de période garde l'onglet (`withPeriod`).
+ */
+export function withTab(params: URLSearchParams, tab: MetricsTab): URLSearchParams {
+  const next = new URLSearchParams(params);
+  next.delete(TAB);
+  if (tab !== DEFAULT_TAB) next.set(TAB, tab);
+  return next;
+}
+
 export interface ParsedMetricsParams {
   period: PeriodChoice;
   by: Dimension;
+  /**
+   * L'onglet que l'adresse demande, Décisions par défaut. La page ne s'en sert que si elle a ses onglets : sans eux, elle montre le Flux, quel que soit
+   * l'onglet demandé.
+   */
+  tab: MetricsTab;
   /** Ce que l'adresse demandait et que la page ne peut pas servir, dans la langue de l'interface. Vide quand tout est compris. */
   notices: string[];
+  /**
+   * L'avis d'un onglet que l'adresse demande et qui n'existe pas, à part des autres : seule la réponse du serveur dit si la page a ses onglets
+   * (`MetricsResponse.handoff`), et sans eux `?tab=` ne règle rien, comme avant les onglets : la page n'en dit rien. Null quand l'adresse ne demande pas
+   * d'onglet ou en demande un qui existe.
+   */
+  tabNotice: string | null;
 }
 
 /**
@@ -168,7 +204,11 @@ export function parseMetricsParams(params: URLSearchParams, scope: Scope, today:
     else notices.push(texts.unknownDimension(by, dimensionsOf(scope).join(', '), shown));
   }
 
-  return { period, by: dimension, notices };
+  const asked = params.get(TAB);
+  const tab = asked === null ? undefined : TABS.find((candidate) => candidate === asked);
+  const tabNotice = asked !== null && tab === undefined ? texts.unknownTab(asked, TABS.join(', ')) : null;
+
+  return { period, by: dimension, tab: tab ?? DEFAULT_TAB, notices, tabNotice };
 }
 
 /** Les `days` derniers jours jusqu'à `today` compris : la plage d'un préréglage, écrite en jours. */

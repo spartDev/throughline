@@ -5,6 +5,7 @@
  */
 import { beforeAll, vi } from 'vitest';
 import type {
+  MetricsAcceptance,
   MetricsCycleTimeBreakdown,
   MetricsDecisions,
   MetricsEvidencedDeliveries,
@@ -79,6 +80,17 @@ export const acceptanceTrendOf = (current: number | null, previous: number | nul
   ...trendOf(current, previous),
   previousSignificant,
 });
+
+/** L'Acceptation au premier passage d'une partie des Livraisons relues (`MetricsAcceptance`) : `accepted` sur `reviewed`, significative à partir de 10. */
+export const acceptanceOf = (accepted: number, reviewed: number): MetricsAcceptance => ({
+  accepted,
+  reviewed,
+  rate: reviewed === 0 ? null : accepted / reviewed,
+  significant: reviewed >= 10,
+});
+
+/** L'Acceptation au premier passage selon l'Intention écrite (bdesk-3e9.7) d'une période sans Livraison relue : deux parties vides. */
+export const NO_INTENT_SPLIT = { withIntent: acceptanceOf(0, 0), withoutIntent: acceptanceOf(0, 0) };
 
 function durationTile(median: number | null, p85: number | null, n: number, before: [number | null, number | null]): MetricsDurationTile {
   return { median, p85, n, trend: { median: trendOf(median, before[0]), p85: trendOf(p85, before[1]) } };
@@ -268,7 +280,7 @@ export function reviewFixture(deliveries = 0, significance: MetricsSignificance 
     handedOff: 0,
     reviewed: 0,
     coverage: deliveries === 0 ? null : 0,
-    firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, null) },
+    firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, null), byWrittenIntent: NO_INTENT_SPLIT },
     roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
     failureRate: { ...significance, reviewed: { deliveries: 0, failed: 0, rate: null }, unreviewed: { deliveries, failed: 0, rate: deliveries === 0 ? null : 0 } },
     sendBacks: { review: 0, integration: 0, validation: 0 },
@@ -368,7 +380,54 @@ export function decisionsFixture(): MetricsDecisions {
     attentionCost: { deliveries: 0, decisions: 0, perDelivery: null },
   });
   const weeks = longTrendFixture().weeks.map(({ from, to, start, end, partial }) => ({ from, to, start, end, partial, ...none() }));
-  return { ...none(), provisional: true, evidencedDeliveries, weeks };
+  const decisionMap = { cells: Array.from({ length: 7 }, () => new Array<number>(24).fill(0)), total: 0 };
+  return { ...none(), provisional: true, evidencedDeliveries, weeks, decisionMap };
+}
+
+/**
+ * Les Décisions d'un Projet qui a les Statuts de relais (bdesk-3e9.7), sur la période des fixtures qui court : 9 Décisions (6 Feux verts dont 5 tenus, 2 Refus
+ * tenus, 1 Relance, aucun Report), 6 Livraisons passées par la chaîne pour 9 Décisions (Coût d'attention de 1,5), dont 4 prouvées ; l'Intention écrite manque
+ * le plus souvent (2), puis le passage En intégration et le Feu vert (1 chacun) : la Livraison sans Feu vert est `bdesk-b7q`, du 28 octobre. Sur 12 semaines,
+ * des Décisions dans 3 semaines, la dernière en cours. La Carte des Décisions en a 9, dont 5 le lundi à 9 h.
+ */
+export function heldDecisionsFixture(): MetricsDecisions {
+  const base = decisionsFixture();
+  const tally = (greenLights: number, held: number, rejections: number, reruns: number, deliveries: number) => ({
+    total: greenLights + rejections + reruns,
+    greenLights: { total: greenLights, held, contradicted: greenLights - held },
+    rejections: { total: rejections, held: rejections, contradicted: 0 },
+    reruns,
+    postponements: 0,
+    attentionCost: { deliveries, decisions: greenLights + rejections + reruns, perDelivery: deliveries === 0 ? null : (greenLights + rejections + reruns) / deliveries },
+  });
+  const byWeek = new Map([
+    [9, tally(2, 2, 1, 0, 2)],
+    [10, tally(3, 2, 1, 1, 3)],
+    [11, tally(1, 1, 0, 0, 1)],
+  ]);
+  const cells = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+  for (const [day, hour, count] of [
+    [0, 9, 5],
+    [2, 14, 3],
+    [4, 22, 1],
+  ] as const) {
+    const row = cells[day];
+    if (row) row[hour] = count;
+  }
+  return {
+    ...base,
+    ...tally(6, 5, 2, 1, 6),
+    evidencedDeliveries: {
+      deliveries: 6,
+      evidenced: 4,
+      share: 4 / 6,
+      missing: { writtenIntent: 2, reviewRound: 0, integration: 1, greenLight: 1 },
+      mostMissing: 'writtenIntent',
+      withoutGreenLight: [{ id: 'bdesk-b7q', title: 'Le graphique du Débit se décale après minuit', type: 'bug', priority: 0, project: 'bdesk', deliveredAt: '2026-10-28T10:00:00.000Z' }],
+    },
+    weeks: base.weeks.map((week, index) => ({ ...week, ...(byWeek.get(index) ?? {}) })),
+    decisionMap: { cells, total: 9 },
+  };
 }
 
 /**
@@ -451,6 +510,8 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
     cycleTimeBreakdown: cycleTimeBreakdownFixture(18, 28.5 * DAY, 2.5 * DAY),
     longTrend: longTrendFixture(),
     decisions: decisionsFixture(),
+    // Aucun Statut de relais, ni déclaré ni porté : la page n'a pas d'onglets (bdesk-3e9.7).
+    handoff: [],
     ...overrides,
   };
 }
@@ -467,11 +528,23 @@ export function agentChainFixture(overrides: Partial<MetricsResponse> = {}): Met
       handedOff: 14,
       reviewed: 12,
       coverage: 12 / 18,
-      firstPassAcceptance: { accepted: 9, reviewed: 12, rate: 0.75, significant: true, minReviewed: 10, trend: acceptanceTrendOf(0.75, 0.6) },
+      // Des 12 Livraisons relues, 8 avaient une Intention écrite (7 sans Retour), 4 non (2 sans Retour) : aucune des deux parties n'atteint 10.
+      firstPassAcceptance: {
+        accepted: 9,
+        reviewed: 12,
+        rate: 0.75,
+        significant: true,
+        minReviewed: 10,
+        trend: acceptanceTrendOf(0.75, 0.6),
+        byWrittenIntent: { withIntent: acceptanceOf(7, 8), withoutIntent: acceptanceOf(2, 4) },
+      },
       roundsPerDelivery: { one: 9, two: 2, three: 0, fourOrMore: 1 },
       failureRate: { ...LOW_COVERAGE, reviewed: { deliveries: 12, failed: 0, rate: 0 }, unreviewed: { deliveries: 6, failed: 0, rate: 0 } },
       sendBacks: { review: 4, integration: 1, validation: 1 },
     }),
+    // Une Livraison passée par la chaîne a porté un Statut de relais : le Projet les a, et la page a ses onglets (bdesk-3e9.7).
+    handoff: ['in_review', 'in_integration', 'awaiting_human'],
+    decisions: heldDecisionsFixture(),
     cycleTimeBreakdown: cycleTimeBreakdownFixture(18, 28.5 * DAY, 2.5 * DAY, {
       development: 14 * DAY,
       correction: 3 * DAY,

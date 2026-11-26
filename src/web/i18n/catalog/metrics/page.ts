@@ -51,6 +51,8 @@ const fr = {
     future: (to: string, today: string) => `La plage dépasse aujourd’hui (${to} > ${today}).`,
     tooEarly: (from: string) => `La plage doit commencer le 1er janvier 1970 ou après : ${from} est trop tôt.`,
     tooLong: (days: string, max: string) => `La plage est trop longue : ${days} jours, au plus ${max}.`,
+    /** Un onglet que la page n'a pas : `choices`, ceux qu'elle peut avoir. */
+    unknownTab: (tab: string, choices: string) => `L’onglet « ${tab} » n’existe pas (${choices}) : l’onglet par défaut est affiché.`,
   },
   metricsSkeleton: {
     loading: 'Chargement des métriques',
@@ -166,6 +168,7 @@ const en: typeof fr = {
     future: (to, today) => `The range goes past today (${to} > ${today}).`,
     tooEarly: (from) => `The range must start on or after January 1, 1970: ${from} is too early.`,
     tooLong: (days, max) => `The range is too long: ${days} days, at most ${max}.`,
+    unknownTab: (tab, choices) => `The tab “${tab}” does not exist (${choices}): the default tab is shown.`,
   },
   metricsSkeleton: {
     loading: 'Loading metrics',
