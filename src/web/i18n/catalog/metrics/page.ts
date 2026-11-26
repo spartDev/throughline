@@ -78,6 +78,16 @@ const fr = {
     better: ', en mieux',
     worse: ', en moins bien',
     stable: 'stable',
+    /** La Chaîne d'agents (bdesk-pz0.8) : son titre et celui de l'Acceptation au premier passage sont ceux de la page (`agentChain`). */
+    reviewedDeliveries: (count: string, n: number) => `${count} ${n >= 2 ? 'Livraisons relues' : 'Livraison relue'}`,
+    acceptanceNote: (reviewed: string, n: number, minimum: string) =>
+      `Acceptation au premier passage non significative : ${reviewed} ${n >= 2 ? 'Livraisons relues' : 'Livraison relue'}, il en faut au moins ${minimum}.`,
+    humanWaitMedian: 'Attente humaine (médiane)',
+    humanWaitP85: 'Attente humaine (P85)',
+    /** `deliveries` : les Livraisons qui ont attendu, déjà écrites (« 5 Livraisons ») ; `percent` : la part de l'Attente humaine dans le Cycle Time cumulé. */
+    humanWaitNote: (deliveries: string, n: number, percent: string) =>
+      `Attente humaine : médiane et P85 ${n >= 2 ? `des ${deliveries} qui ont` : `de ${deliveries} qui a`} attendu votre validation ; ${percent} du Cycle Time cumulé de la période.`,
+    humanWaitUnreliable: (minimum: string) => ` Moins de ${minimum} Livraisons : les centiles ne disent pas grand-chose.`,
     longTrend: (weeks: string, n: number) => `Tendance longue (${weeks} ${n >= 2 ? 'semaines' : 'semaine'})`,
     weekOf: 'Semaine du',
     running: ' (en cours)',
@@ -180,6 +190,14 @@ const en: typeof fr = {
     better: ', better',
     worse: ', worse',
     stable: 'steady',
+    reviewedDeliveries: (count, n) => `${count} ${n === 1 ? 'Reviewed delivery' : 'Reviewed deliveries'}`,
+    acceptanceNote: (reviewed, n, minimum) =>
+      `First-pass acceptance not significant: ${reviewed} ${n === 1 ? 'Reviewed delivery' : 'Reviewed deliveries'}, at least ${minimum} needed.`,
+    humanWaitMedian: 'Human wait (median)',
+    humanWaitP85: 'Human wait (P85)',
+    humanWaitNote: (deliveries, _n, percent) =>
+      `Human wait: median and P85 of the ${deliveries} that waited for your validation; ${percent} of the period’s cumulative Cycle Time.`,
+    humanWaitUnreliable: (minimum) => ` Fewer than ${minimum} Deliveries: the percentiles say little.`,
     longTrend: (weeks, n) => `Long trend (${weeks} ${n === 1 ? 'week' : 'weeks'})`,
     weekOf: 'Week of',
     running: ' (in progress)',

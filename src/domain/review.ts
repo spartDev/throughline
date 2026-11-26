@@ -1,6 +1,6 @@
 import type { DeclaredStatuses, HandoffStatus, MetricsReview, MetricsReviewFailureRate, MetricsSendBackOrigin } from '../shared/api';
 import { resolvePeriod } from './calendar';
-import { type MetricsInput, type MetricsOptions, significanceOf, type TrackedTicket } from './metrics';
+import { type MetricsInput, type MetricsOptions, significanceOf, type TrackedTicket, trend } from './metrics';
 import { isDeclaredWip, isHandoffStatus } from './statuses';
 import type { Step } from './timeline';
 
@@ -83,35 +83,34 @@ interface Delivered {
   review: TicketReview;
 }
 
-/** Les mesures de relecture de la période demandée, sur l'union des tickets des Projets (la Vue globale, ou un seul Projet). */
+/**
+ * Les mesures de relecture de la période demandée, sur l'union des tickets des Projets (la Vue globale, ou un seul Projet). L'Acceptation au premier passage
+ * est aussi mesurée sur la période précédente, à durée écoulée égale (de son début à `previousAsOf`), pour sa tendance, qui dit si celle-là est
+ * significative, par le même seuil.
+ */
 export function computeReview(projects: MetricsInput[], { period, now, timeZone }: MetricsOptions): MetricsReview {
   const resolved = resolvePeriod(period, now.getTime(), timeZone);
-  const [start, end] = [resolved.current.start, resolved.asOf];
-  const delivered: Delivered[] = projects.flatMap(({ analysis }) =>
-    analysis.tickets
-      .filter(({ deliveredAt }) => deliveredAt !== null && deliveredAt >= start && deliveredAt < end)
-      .map((ticket) => ({ ticket, review: reviewOf(ticket.timeline.steps, analysis.declaredStatuses) })),
-  );
-
+  const delivered = deliveredIn(projects, resolved.current.start, resolved.asOf);
   const reviewed = delivered.filter(({ review }) => review.rounds > 0);
-  const accepted = reviewed.filter(({ review }) => totalOf(review.sendBacks) === 0).length;
+  const acceptance = acceptanceOf(reviewed);
   const rounds = (min: number, max = Number.POSITIVE_INFINITY) =>
     reviewed.filter(({ review }) => review.rounds >= min && review.rounds <= max).length;
   const sendBacks: Record<MetricsSendBackOrigin, number> = { review: 0, integration: 0, validation: 0 };
   for (const { review } of delivered) {
     for (const origin of Object.keys(sendBacks) as MetricsSendBackOrigin[]) sendBacks[origin] += review.sendBacks[origin];
   }
+  const before = deliveredIn(projects, resolved.previous.start, resolved.previousAsOf).filter(({ review }) => review.rounds > 0);
 
   return {
     deliveries: delivered.length,
+    handedOff: delivered.filter(({ ticket }) => ticket.timeline.steps.some(({ status }) => isHandoffStatus(status))).length,
     reviewed: reviewed.length,
     coverage: ratio(reviewed.length, delivered.length),
     firstPassAcceptance: {
-      accepted,
-      reviewed: reviewed.length,
-      rate: ratio(accepted, reviewed.length),
+      ...acceptance,
       significant: reviewed.length >= MIN_REVIEWED_DELIVERIES,
       minReviewed: MIN_REVIEWED_DELIVERIES,
+      trend: { ...trend(acceptance.rate, acceptanceOf(before).rate), previousSignificant: before.length >= MIN_REVIEWED_DELIVERIES },
     },
     roundsPerDelivery: { one: rounds(1, 1), two: rounds(2, 2), three: rounds(3, 3), fourOrMore: rounds(4) },
     failureRate: {
@@ -121,6 +120,21 @@ export function computeReview(projects: MetricsInput[], { period, now, timeZone 
     },
     sendBacks,
   };
+}
+
+/** Les Livraisons de la fenêtre [`start`, `end`), datées de leur dernière clôture comme le Débit, avec leur relecture. */
+function deliveredIn(projects: MetricsInput[], start: number, end: number): Delivered[] {
+  return projects.flatMap(({ analysis }) =>
+    analysis.tickets
+      .filter(({ deliveredAt }) => deliveredAt !== null && deliveredAt >= start && deliveredAt < end)
+      .map((ticket) => ({ ticket, review: reviewOf(ticket.timeline.steps, analysis.declaredStatuses) })),
+  );
+}
+
+/** L'Acceptation au premier passage de Livraisons relues : celles qui n'ont subi aucun Retour, de quelque origine qu'il soit. */
+function acceptanceOf(reviewed: Delivered[]): { accepted: number; reviewed: number; rate: number | null } {
+  const accepted = reviewed.filter(({ review }) => totalOf(review.sendBacks) === 0).length;
+  return { accepted, reviewed: reviewed.length, rate: ratio(accepted, reviewed.length) };
 }
 
 /** Le Taux d'échec d'une partie des Livraisons : celles qui ont au moins un Bug d'origine (`TrackedTicket.failed`), comme la tuile. */

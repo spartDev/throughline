@@ -278,7 +278,7 @@ Débit, Débit sain, Lead Time au 85ᵉ centile et Taux de Réouverture semaine 
 _English_: Long trend
 
 **Rapport de rétrospective**:
-Un résumé en markdown, à copier, de la période que montre la page Métriques : Débit, Débit sain, Lead Time, Taux de Réouverture et Taux d'échec avec leur évolution par rapport à la période précédente, la Tendance longue, le Retravail de la période et les Signaux en cours ; avec les Statuts de relais, les Décisions tenues et leur répartition par sens, la part des Livraisons prouvées, le Coût d'attention et la liste des Livraisons sans Feu vert. Les Signaux disent le moment du rapport, pas la période.
+Un résumé en markdown, à copier, de la période que montre la page Métriques : Débit, Débit sain, Lead Time, Taux de Réouverture et Taux d'échec avec leur évolution par rapport à la période précédente, la Tendance longue, le Retravail de la période et les Signaux en cours ; dès qu'une Livraison de la période est passée par un Statut de relais, l'Acceptation au premier passage avec son évolution et l'Attente humaine (médiane, 85ᵉ centile et part du Cycle Time) ; avec les Statuts de relais, les Décisions tenues et leur répartition par sens, la part des Livraisons prouvées, le Coût d'attention et la liste des Livraisons sans Feu vert. Les Signaux disent le moment du rapport, pas la période.
 _English_: Retrospective report
 _Avoid_: export, bilan
 

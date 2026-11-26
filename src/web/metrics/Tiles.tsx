@@ -127,6 +127,24 @@ export function Value({ children, caption, muted = false }: { children: ReactNod
 }
 
 /**
+ * Une valeur qui ne dit rien faute d'échantillon (Taux d'échec, Débit sain, Acceptation au premier passage) : « Non significatif » à la place de la valeur, le
+ * motif dessous, puis ce qui a été observé (`children`), en retrait, pour qui veut le recouper. La tuile qui la porte est `indicative`.
+ */
+export function NotSignificant({ reason, children }: { reason: string | null; children?: ReactNode }) {
+  const t = useT();
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="flex items-center gap-1.5 text-base font-bold leading-9 text-ink-2">
+        <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
+        {t.metrics.tiles.notSignificant}
+      </p>
+      {reason ? <p className="text-micro leading-4 text-ink-2">{reason}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+/**
  * La tendance d'une valeur : une flèche, l'écart, la valeur d'avant. Verte si la valeur s'améliore, rouge si elle se
  * dégrade, neutre pour un WIP ; jamais la couleur seule (flèche, signe, phrase pour les lecteurs d'écran). Une
  * infobulle rappelle à quoi la valeur est comparée.
@@ -205,16 +223,11 @@ function SoundThroughputTile({ tile, comparison, className }: { tile: MetricsSou
     const reason = failureRateReason(tile, language);
     return (
       <Tile title={texts.soundThroughput} help={help} indicative className={className}>
-        <div className="flex flex-col gap-1">
-          <p className="flex items-center gap-1.5 text-base font-bold leading-9 text-ink-2">
-            <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
-            {texts.notSignificant}
-          </p>
-          {reason ? <p className="text-micro leading-4 text-ink-2">{reason}</p> : null}
+        <NotSignificant reason={reason}>
           <p data-gap="" className="text-micro text-ink-3 tnum">
             {tile.deliveries === 0 ? texts.noDeliveries : texts.observedSound(formatCount(tile.total), tile.deliveries, formatCount(tile.deliveries))}
           </p>
-        </div>
+        </NotSignificant>
         {provisional}
       </Tile>
     );
@@ -304,14 +317,7 @@ function FailureRateTile({ tile, comparison, className }: { tile: MetricsFailure
     const reason = failureRateReason(tile, language);
     return (
       <Tile title={texts.failureRate} help={t.metrics.metricHelp.failureRate} sample={sample} indicative className={className}>
-        <div className="flex flex-col gap-1">
-          <p className="flex items-center gap-1.5 text-base font-bold leading-9 text-ink-2">
-            <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
-            {texts.notSignificant}
-          </p>
-          {reason ? <p className="text-micro leading-4 text-ink-2">{reason}</p> : null}
-          {observed ? <p className="text-micro text-ink-3 tnum">{observed}</p> : null}
-        </div>
+        <NotSignificant reason={reason}>{observed ? <p className="text-micro text-ink-3 tnum">{observed}</p> : null}</NotSignificant>
       </Tile>
     );
   }

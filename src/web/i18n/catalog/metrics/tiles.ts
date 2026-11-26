@@ -42,6 +42,21 @@ const fr = {
       'Le Stock d’un Projet, ses tickets non fermés hors Epics, a monté chacune des 3 dernières semaines pleines (du lundi au dimanche) : d’au moins 25 % et d’au moins 3 tickets en tout, sans qu’une semaine porte plus de la moitié de la hausse. Le Signal dit que le Stock monte, pas pourquoi. Ce n’est pas une rafale d’un jour, comme la planification d’une Epic : il faut 3 semaines de suite.',
     sendBackLoop:
       'Un ticket non fermé revenu au moins 3 fois au développement après une relecture, une intégration ou une validation (des Retours). Le défaut revient, ou le besoin est flou : mieux vaut regarder le ticket que relancer un tour de plus.',
+    /** Les mesures de la Chaîne d'agents (bdesk-pz0.8, `AgentChain.tsx`). */
+    firstPassAcceptance:
+      'Part des Livraisons relues de la période (au moins un passage En relecture) qui ne sont jamais reparties au développement : aucun Retour depuis la relecture, l’intégration ou la validation. Elle dit si la chaîne d’agents livre juste du premier coup. Non significative sous 10 Livraisons relues ; la tendance la compare à la période précédente.',
+    reviewCoverage:
+      'Part des Livraisons de la période passées au moins une fois En relecture (les Livraisons relues). Elle dit si l’Acceptation au premier passage est représentative : basse, l’Acceptation repose sur peu de Livraisons.',
+    reviewRounds:
+      'Les Livraisons relues de la période selon leur nombre de Tours de relecture (chaque passage En relecture) : 1, 2, 3, 4 ou plus. Beaucoup de Tours, c’est un défaut qui revient ou un besoin flou.',
+    sendBacks:
+      'Chaque fois qu’une Livraison de la période est repartie au développement depuis un Statut de relais (un Retour), selon le statut qu’elle quittait : relecture, intégration ou validation. Un Retour n’est pas du Retravail : la chaîne arrête un défaut avant la Livraison.',
+    failureRateAfterReview:
+      'Le Taux d’échec des seules Livraisons relues, à côté de celui des Livraisons qui ne l’ont pas été : la relecture évite-t-elle des Bugs d’origine ? Non significatif tant que peu de bugs ont leur origine renseignée (Couverture), comme le Taux d’échec.',
+    cycleTimeBreakdown:
+      'Le Cycle Time cumulé des Livraisons de la période, en six parts qui s’additionnent : le temps de chaque Statut de relais (Relecture, Intégration, Attente humaine), le Blocage, et le reste du travail, coupé au premier Retour entre Développement et Correction. Il dit où passe le temps de travail.',
+    humanWait:
+      'Le temps qu’une Livraison a passé À valider, hors Blocage : elle attendait votre test, votre décision ou votre Feu vert. Médiane et P85 des seules Livraisons qui ont attendu, et part de ce temps dans le Cycle Time cumulé de la période. Sous 4 Livraisons qui ont attendu, les centiles ne sont pas dignes de foi.',
   },
   /** Le cadre d'une tuile et sa tendance (`Tile`, `Trend` de `metrics/Tiles.tsx`), partagés par toutes les tuiles. */
   tileFrame: {
@@ -266,6 +281,20 @@ const en: typeof fr = {
       'A project’s Inventory, its tickets not closed apart from Epics, rose in each of the last 3 full weeks (Monday to Sunday): by at least 25% and by at least 3 tickets in all, with no week carrying more than half of the rise. The Signal says the Inventory is rising, not why. It is not a one-day burst, like planning an Epic: it takes 3 weeks in a row.',
     sendBackLoop:
       'A ticket not yet closed that went back to development at least 3 times after a review, an integration or a validation (Send-backs). The defect keeps coming back, or the need is unclear: better look at the ticket than run one more round.',
+    firstPassAcceptance:
+      'Share of the period’s Reviewed deliveries (at least one pass In review) that never went back to development: no Send-back from review, integration or validation. It tells whether the agent chain gets it right the first time. Not significant under 10 Reviewed deliveries; the trend compares it with the previous period.',
+    reviewCoverage:
+      'Share of the period’s Deliveries that went In review at least once (the Reviewed deliveries). It tells whether First-pass acceptance is representative: when it is low, the acceptance rests on few Deliveries.',
+    reviewRounds:
+      'The period’s Reviewed deliveries by number of Review rounds (each pass In review): 1, 2, 3, 4 or more. Many rounds mean a defect that keeps coming back or an unclear need.',
+    sendBacks:
+      'Each time one of the period’s Deliveries went back to development from a Handoff status (a Send-back), by the status it left: review, integration or validation. A Send-back is not Rework: the chain stops a defect before the Delivery.',
+    failureRateAfterReview:
+      'The Change failure rate of Reviewed deliveries only, next to that of Deliveries that were not reviewed: does review prevent Escaped bugs? Not significant while few bugs have a recorded origin (Coverage), like the Change failure rate.',
+    cycleTimeBreakdown:
+      'The cumulative Cycle Time of the period’s Deliveries, in six parts that add up: the time in each Handoff status (Review, Integration, Human wait), Blockage, and the rest of the work, split at the first Send-back into Development and Fixing. It tells where working time goes.',
+    humanWait:
+      'The time a Delivery spent Awaiting validation, outside Blockage: it was waiting for your test, your decision or your Green light. Median and P85 of the Deliveries that waited only, and the share of this time in the period’s cumulative Cycle Time. Under 4 Deliveries that waited, the percentiles are not trustworthy.',
   },
   tileFrame: {
     about: (title) => `About ${title}`,

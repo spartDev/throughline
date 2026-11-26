@@ -2,6 +2,7 @@ import { createContext, useEffect, useId, useLayoutEffect, useRef, useState, typ
 import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { Skeleton } from '../ui/states';
+import { MetricHelp } from './MetricHelp';
 import { outlineOf } from './palette';
 import { placeTooltip } from './scales';
 import { useElementWidth } from './useElementWidth';
@@ -42,9 +43,13 @@ export function ChartFrame({
  */
 export const ChartTitleId = createContext<string | undefined>(undefined);
 
-/** Une carte de graphique : titre, phrase d'explication, réglages, légende, dessin, et le tableau de ses données. */
+/**
+ * Une carte de graphique : titre, phrase d'explication, réglages, légende, dessin, et le tableau de ses données. Avec `help`, l'icône info d'une tuile suit
+ * le titre (`MetricHelp`) : une mesure qui se lit dans une carte a son aide comme celle d'une tuile.
+ */
 export function ChartCard({
   title,
+  help,
   description,
   actions,
   legend,
@@ -53,6 +58,7 @@ export function ChartCard({
   children,
 }: {
   title: string;
+  help?: string;
   description?: ReactNode;
   actions?: ReactNode;
   legend?: ReactNode;
@@ -67,9 +73,18 @@ export function ChartCard({
     <section aria-labelledby={titleId} className={cx('flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-panel p-4 @md:p-5', className)}>
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h3 id={titleId} className="text-base font-bold tracking-[-0.005em] text-ink">
-            {title}
-          </h3>
+          {help ? (
+            <span className="flex min-w-0 items-center gap-0.5">
+              <h3 id={titleId} className="min-w-0 text-base font-bold tracking-[-0.005em] text-ink">
+                {title}
+              </h3>
+              <MetricHelp title={title} help={help} />
+            </span>
+          ) : (
+            <h3 id={titleId} className="text-base font-bold tracking-[-0.005em] text-ink">
+              {title}
+            </h3>
+          )}
           {description ? <p className="mt-0.5 max-w-[64ch] text-micro text-ink-2">{description}</p> : null}
         </div>
         {actions}

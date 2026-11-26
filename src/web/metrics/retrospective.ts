@@ -86,6 +86,42 @@ function indicators({ tiles, health }: NamedMetricsResponse, language: Language)
   return lines;
 }
 
+/**
+ * La Chaîne d'agents (bdesk-pz0.8), comme la page la montre : seulement si une Livraison de la période est passée par un Statut de relais. L'Acceptation au
+ * premier passage avec son évolution, comme les indicateurs, sauf face à une période précédente non significative, et l'Attente humaine, que l'API ne compare
+ * pas à la période précédente.
+ */
+function agentChain({ review, cycleTimeBreakdown }: NamedMetricsResponse, language: Language): string[] {
+  if (review.handedOff === 0) return [];
+  const texts = textsIn(language);
+  const catalog = CATALOGS[language].metrics;
+  const { formatCount, formatPercent } = FORMATS[language];
+  const { acceptance, duration } = MEASURES[language];
+  const { accepted, reviewed, rate, significant, minReviewed, trend } = review.firstPassAcceptance;
+  const { waited, stats, reliable, minDeliveries, share } = cycleTimeBreakdown.humanWaits;
+  const acceptanceValue =
+    rate === null
+      ? DASH
+      : `${acceptance.format(rate)} (${texts.outOf(formatCount(accepted), counted(language, reviewed, texts.reviewedDeliveries))})${significant ? '' : texts.notSignificant}`;
+  // Une période précédente sous le seuil a un taux, mais il ne dit rien : la colonne le dit, et l'évolution n'en tire pas de verdict.
+  const previousValue = `${previousOf(trend, acceptance)}${trend.previous === null || trend.previousSignificant ? '' : texts.notSignificant}`;
+  const lines = [
+    `## ${catalog.agentChain.heading}`,
+    '',
+    row([texts.indicator, texts.period, texts.previous, texts.evolution]),
+    row(['---', '---:', '---:', '---']),
+    row([catalog.agentChain.firstPassAcceptance, acceptanceValue, previousValue, rate === null || !trend.previousSignificant ? DASH : evolution(trend, acceptance)]),
+    row([texts.humanWaitMedian, duration.format(stats.median ?? Number.NaN), DASH, DASH]),
+    row([texts.humanWaitP85, duration.format(stats.p85 ?? Number.NaN), DASH, DASH]),
+  ];
+  if (!significant) lines.push('', `_${texts.acceptanceNote(formatCount(reviewed), reviewed, formatCount(minReviewed))}_`);
+  const wait =
+    waited === 0
+      ? catalog.humanWait.none
+      : `${texts.humanWaitNote(counted(language, waited, texts.deliveries), waited, formatPercent(share, { precise: true }))}${reliable ? '' : texts.humanWaitUnreliable(formatCount(minDeliveries))}`;
+  lines.push('', `_${wait}_`);
+  return lines;
+}
 
 function longTrend({ longTrend: trend }: NamedMetricsResponse, language: Language): string[] {
   if (trend.weeks.length === 0) return [];
@@ -158,8 +194,9 @@ function signals(input: RetrospectiveSignals, timeZone: string, projectName: (id
 
 /**
  * Le rapport de rétrospective d'une période, en markdown à copier : Débit, Lead Time, Taux de Réouverture et Taux d'échec avec leur évolution par rapport à
- * la période précédente (la même comparaison que les tuiles), la Tendance longue, les tickets en Retravail et les Signaux en cours. Les Signaux disent
- * maintenant, pas la période : le rapport le dit dans leur titre.
+ * la période précédente (la même comparaison que les tuiles), la Chaîne d'agents quand la page la montre (Acceptation au premier passage et Attente
+ * humaine), la Tendance longue, les tickets en Retravail et les Signaux en cours. Les Signaux disent maintenant, pas la période : le rapport le dit dans
+ * leur titre.
  */
 export function buildRetrospective({ scopeName, metrics, signals: signalsInput, language }: RetrospectiveInput): string {
   const texts = textsIn(language);
@@ -179,6 +216,7 @@ export function buildRetrospective({ scopeName, metrics, signals: signalsInput, 
   const sections = [
     [`# ${texts.title(escapeMarkdown(scopeName), FORMATS[language].formatDayRange(metrics.period.from, metrics.period.to))}`, '', comparison.summary],
     [`## ${texts.indicators}`, '', ...indicators(metrics, language)],
+    agentChain(metrics, language),
     longTrend(metrics, language),
     rework(metrics, projectName, language),
     signals(signalsInput, metrics.timeZone, projectName, showProject, language),

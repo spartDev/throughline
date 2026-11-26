@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SignalsResponse } from '../../shared/api';
 import type { NamedMetricsResponse } from './api';
 import { buildRetrospective, escapeMarkdown, evolution } from './retrospective';
-import { emptyHealthFixture, metricsFixture, plain, trendOf } from './testing';
+import { acceptanceTrendOf, agentChainFixture, emptyHealthFixture, metricsFixture, plain, trendOf } from './testing';
 import { MEASURES } from './trend';
 
 const DAY = 86_400_000;
@@ -172,6 +172,73 @@ describe('évolution', () => {
     expect(plain(evolution(trendOf(2 * DAY, 3 * DAY), MEASURES.fr.duration))).toBe('−1 j (−33 %), en mieux');
     expect(evolution(trendOf(4, 4), MEASURES.fr.count)).toBe('stable');
     expect(evolution(trendOf(4, null), MEASURES.fr.count)).toBe('—');
+  });
+});
+
+describe('la Chaîne d’agents du rapport (bdesk-pz0.8)', () => {
+  const HOUR = 3_600_000;
+  const chain = agentChainFixture();
+  const withChain = (review: Partial<NamedMetricsResponse['review']>, humanWaits: Partial<NamedMetricsResponse['cycleTimeBreakdown']['humanWaits']> = {}) =>
+    agentChainFixture({
+      review: { ...chain.review, ...review },
+      cycleTimeBreakdown: { ...chain.cycleTimeBreakdown, humanWaits: { ...chain.cycleTimeBreakdown.humanWaits, ...humanWaits } },
+    });
+
+  it('n’apparaît pas sans Livraison passée par un Statut de relais : le rapport reste celui d’avant', () => {
+    const text = build();
+    expect(text).not.toContain('Chaîne d’agents');
+    expect(text).not.toContain('Acceptation au premier passage');
+    expect(text).not.toContain('Attente humaine');
+  });
+
+  it('donne l’Acceptation au premier passage avec son évolution, puis l’Attente humaine, entre les indicateurs et la Tendance longue', () => {
+    const text = build(chain);
+    expect(text).toContain('## Chaîne d’agents\n\n| Indicateur | Période | Précédente | Évolution |\n| --- | ---: | ---: | --- |');
+    expect(text).toContain('| Acceptation au premier passage | 75 % (9 sur 12 Livraisons relues) | 60 % | +15 pts, en mieux |');
+    expect(text).toContain('| Attente humaine (médiane) | 8 h | — | — |');
+    expect(text).toContain('| Attente humaine (P85) | 1,3 j | — | — |');
+    expect(text).toContain('_Attente humaine : médiane et P85 des 6 Livraisons qui ont attendu votre validation ; 12,9 % du Cycle Time cumulé de la période._');
+    expect(text.indexOf('## Indicateurs')).toBeLessThan(text.indexOf('## Chaîne d’agents'));
+    expect(text.indexOf('## Chaîne d’agents')).toBeLessThan(text.indexOf('## Tendance longue'));
+  });
+
+  it('sous 10 Livraisons relues, la dit non significative sur sa ligne et dessous ; sous 4 attentes, met la réserve des centiles', () => {
+    const text = build(
+      withChain(
+        { reviewed: 3, firstPassAcceptance: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false, minReviewed: 10, trend: acceptanceTrendOf(2 / 3, null) } },
+        { waited: 1, stats: { median: 3 * HOUR, p85: 3 * HOUR, n: 1 }, reliable: false },
+      ),
+    );
+    expect(text).toContain('| Acceptation au premier passage | 66,7 % (2 sur 3 Livraisons relues), non significatif | — | — |');
+    expect(text).toContain('_Acceptation au premier passage non significative : 3 Livraisons relues, il en faut au moins 10._');
+    expect(text).toContain(
+      '_Attente humaine : médiane et P85 de 1 Livraison qui a attendu votre validation ; 12,9 % du Cycle Time cumulé de la période. Moins de 4 Livraisons : les centiles ne disent pas grand-chose._',
+    );
+  });
+
+  it('face à une période précédente sous 10 Livraisons relues : son taux est dit non significatif, et l’évolution n’en tire pas de verdict', () => {
+    const text = build(withChain({ firstPassAcceptance: { ...chain.review.firstPassAcceptance, trend: acceptanceTrendOf(0.75, 1, false) } }));
+    expect(text).toContain('| Acceptation au premier passage | 75 % (9 sur 12 Livraisons relues) | 100 %, non significatif | — |');
+  });
+
+  it('sans Livraison relue ni attente : des tirets, et ce qui manque dit en toutes lettres', () => {
+    const text = build(
+      withChain(
+        { reviewed: 0, firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, 0.5) } },
+        { waited: 0, stats: { median: null, p85: null, n: 0 }, reliable: false, share: 0 },
+      ),
+    );
+    expect(text).toContain('| Acceptation au premier passage | — | 50 % | — |');
+    expect(text).toContain('| Attente humaine (médiane) | — | — | — |');
+    expect(text).toContain('_Aucune Livraison de la période n’a attendu votre validation (À valider)._');
+  });
+
+  it('en anglais', () => {
+    const text = plain(buildRetrospective({ scopeName: 'Overview', metrics: chain, signals: { status: 'ok', response: signalsResponse() }, language: 'en' }));
+    expect(text).toContain('## Agent chain\n\n| Metric | Period | Previous | Change |');
+    expect(text).toContain('| First-pass acceptance | 75% (9 of 12 Reviewed deliveries) | 60% | +15 pts, better |');
+    expect(text).toContain('| Human wait (median) | 8 h | — | — |');
+    expect(text).toContain('_Human wait: median and P85 of the 6 Deliveries that waited for your validation; 12.9% of the period’s cumulative Cycle Time._');
   });
 });
 

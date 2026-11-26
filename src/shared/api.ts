@@ -957,6 +957,11 @@ export interface MetricsReviewFailureRate {
 export interface MetricsReview {
   /** Livraisons de la période (le Débit). */
   deliveries: number;
+  /**
+   * Parmi elles, celles qui sont passées par au moins un Statut de relais avant leur dernière clôture, avant une Réouverture comprise (bdesk-pz0.8) : la
+   * page Métriques ne montre la Chaîne d'agents que s'il y en a une. Toute mesure de relecture ou part de relais non nulle en vient.
+   */
+  handedOff: number;
   /** Parmi elles, les Livraisons relues : au moins un Tour de relecture avant leur dernière clôture. */
   reviewed: number;
   /** Couverture de relecture : `reviewed / deliveries`, de 0 à 1 ; null sans Livraison. */
@@ -973,6 +978,12 @@ export interface MetricsReview {
     significant: boolean;
     /** Le seuil : 10 Livraisons relues. */
     minReviewed: number;
+    /**
+     * `rate` comparé à celui de la période précédente (bdesk-pz0.8), à durée écoulée égale comme les tuiles : ses Livraisons relues de
+     * [`previousPeriod.start`, `previousAsOf`). `previous` est null sans Livraison relue sur cette fenêtre-là. `previousSignificant` est faux quand
+     * elle en compte moins de `minReviewed` : le taux d'avant ne dit rien, et la tendance ne fonde pas de verdict.
+     */
+    trend: MetricsTrend & { previousSignificant: boolean };
   };
   /** Tours par Livraison : les Livraisons relues selon leur nombre de Tours de relecture. La somme vaut `reviewed`. */
   roundsPerDelivery: { one: number; two: number; three: number; fourOrMore: number };

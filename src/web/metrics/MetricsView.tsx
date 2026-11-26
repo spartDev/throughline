@@ -14,6 +14,7 @@ import { ErrorNotice, Notice } from '../ui/states';
 import { useMetrics, useZoneAnswer } from './api';
 import { ActivityPanel } from './ActivityMap';
 import { AgePanel } from './AgeChart';
+import { AgentChainSection } from './AgentChain';
 import { BalancePanel } from './BalanceChart';
 import { BreakdownPanel } from './BreakdownChart';
 import { CfdPanel } from './CfdChart';
@@ -57,7 +58,8 @@ const NO_SCROLL_ANCHORING = { overflowAnchor: 'none' } as const;
 
 /**
  * Les métriques de flux d'un Projet ou de la Vue globale : réglages (période, découpage), tuiles, graphiques, santé du flux
- * (cinq tuiles, puis cinq cartes d'analyse : bdesk-38k.13) et tableau du découpage. La période et le découpage vivent dans
+ * (cinq tuiles, puis cinq cartes d'analyse : bdesk-38k.13), Chaîne d'agents quand une Livraison est passée par un Statut de relais
+ * (bdesk-pz0.8) et tableau du découpage. La période et le découpage vivent dans
  * l'adresse (`?range=`, `?from=&to=`, `?by=`) : un lien les partage.
  * Chaque changement remplace l'entrée de l'historique, comme au kanban : « Retour » quitte la page.
  *
@@ -248,6 +250,9 @@ function Content({
           </section>
 
           <HealthTiles tiles={data.tiles} health={data.health} comparison={comparison} />
+
+          {/* La Chaîne d'agents (bdesk-pz0.8) : seulement si une Livraison de la période est passée par un Statut de relais. Sans elle, la page est celle d'avant. */}
+          {data.review.handedOff > 0 ? <AgentChainSection review={data.review} breakdown={data.cycleTimeBreakdown} comparison={comparison} /> : null}
 
           <section aria-labelledby={flowId} className="flex min-w-0 flex-col gap-3">
             <SectionHeading id={flowId}>{texts.flowHeading}</SectionHeading>
