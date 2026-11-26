@@ -1026,6 +1026,68 @@ export interface MetricsHumanWaits {
   share: number | null;
 }
 
+/**
+ * Des Feux verts, ou des Refus : tenus tant que rien ne les a démentis (Décision tenue). Un Feu vert est démenti quand la Livraison qui le suit est rouverte ou
+ * reçoit un Bug d'origine, un Refus quand son ticket est rouvert. `held + contradicted` vaut `total`.
+ */
+export interface MetricsJudgedDecisions {
+  total: number;
+  /** Ceux que rien n'a démentis, y compris ceux qu'aucune clôture ne suit encore (un Feu vert vers En intégration dont la PR est ouverte). */
+  held: number;
+  contradicted: number;
+}
+
+/**
+ * Les Décisions d'une fenêtre, par sens : les Transitions qui font sortir un ticket de À valider, datées de leur Transition. Seuls les Feux verts et les Refus
+ * sont tenus ou démentis ; les Relances et les Reports ne le sont jamais. Un Projet qui n'a pas À valider (ni déclaré, ni porté par un ticket) n'en a aucune.
+ */
+export interface MetricsDecisionTally {
+  /** Toutes les Décisions : `greenLights.total + rejections.total + reruns + postponements`. */
+  total: number;
+  /** Feux verts : vers une clôture qui est une Livraison, ou vers En intégration. */
+  greenLights: MetricsJudgedDecisions;
+  /** Refus : vers une clôture sans Livraison (Abandon ou Renoncement). */
+  rejections: MetricsJudgedDecisions;
+  /** Relances : vers en cours, rattaché à un agent, un statut déclaré `wip`, ou En relecture. */
+  reruns: number;
+  /** Reports : vers tout autre statut non fermé (ouvert, différé, bloqué…). */
+  postponements: number;
+}
+
+/**
+ * Coût d'attention : le nombre moyen de Décisions qu'ont demandées les Livraisons passées par la chaîne d'une fenêtre (au moins un Statut de relais depuis leur
+ * dernière Réouverture, ou leur création), datées de leur dernière clôture comme le Débit. Seules comptent celles des Projets qui ont À valider (déclaré, ou
+ * porté par un ticket) : ailleurs, aucune Livraison ne peut demander de Décision.
+ */
+export interface MetricsAttentionCost {
+  /** Livraisons passées par la chaîne de la fenêtre : le dénominateur. */
+  deliveries: number;
+  /** Les Décisions qu'elles ont demandées, à quelque date que ce soit avant leur dernière clôture, celles d'avant une Réouverture comprises : le numérateur. */
+  decisions: number;
+  /** `decisions / deliveries` ; null sans Livraison passée par la chaîne. */
+  perDelivery: number | null;
+}
+
+/** Une semaine de la tendance des Décisions : les mêmes 12 semaines que la Tendance longue, la semaine en cours comptée jusqu'à `asOf`. */
+export interface MetricsDecisionsWeek extends MetricsDecisionTally, Pick<MetricsLongTrendWeek, 'from' | 'to' | 'start' | 'end' | 'partial'> {
+  attentionCost: MetricsAttentionCost;
+}
+
+/**
+ * Les Décisions de la période (bdesk-3e9.3) : celles que l'utilisateur a prises À valider, par sens, ce que l'historique dit des Feux verts et des Refus
+ * (Décision tenue), le Coût d'attention, et les uns et les autres semaine par semaine sur 12 semaines. Tout se lit dans les Transitions, sans autre source.
+ */
+export interface MetricsDecisions extends MetricsDecisionTally {
+  /**
+   * La période court encore (`asOf` précède `period.end`), comme pour le Débit sain : ses Feux verts et ses Refus n'ont pas tous eu le temps d'être démentis,
+   * et `held` est provisoire.
+   */
+  provisional: boolean;
+  attentionCost: MetricsAttentionCost;
+  /** Les 12 semaines qui finissent par la semaine en cours, quelle que soit la période, sans lissage. */
+  weeks: MetricsDecisionsWeek[];
+}
+
 /** Ce que le domaine calcule : tout ce qu'affiche la page Métriques, hors Projets. */
 export interface MetricsReport {
   range: MetricsRange;
@@ -1104,4 +1166,6 @@ export interface MetricsResponse extends MetricsReport {
   cycleTimeBreakdown: MetricsCycleTimeBreakdown;
   /** Tendance longue (bdesk-l77.4) : calculée par `longTrendOf`, sur les 12 dernières semaines, quelle que soit la période. */
   longTrend: MetricsLongTrend;
+  /** Décisions, Décisions tenues et Coût d'attention (bdesk-3e9.3) : calculés par `computeDecisions`, à côté de `computeMetrics`, sur la même période. */
+  decisions: MetricsDecisions;
 }

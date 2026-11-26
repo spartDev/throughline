@@ -332,7 +332,7 @@ _English_: Send-back loop
 _Avoid_: ping-pong
 
 **Décision**:
-Une Transition qui fait sortir un ticket de À valider : la main repasse de l'utilisateur à la chaîne. Son sens se lit au statut d'arrivée : Feu vert, Relance, Refus ou Report. Un ticket qui n'est jamais passé À valider ne porte aucune Décision.
+Une Transition qui fait sortir un ticket de À valider : la main repasse de l'utilisateur à la chaîne. Son sens se lit au statut d'arrivée : Feu vert, Relance, Refus ou Report. Une clôture y est une Livraison ou non selon la règle de clôture du Dernier commit, celle de la Livraison elle-même (liens d'Abandon, label `declined`), même si le ticket a été rouvert depuis. Un ticket qui n'est jamais passé À valider ne porte aucune Décision.
 _English_: Decision
 _Avoid_: validation, approbation (ce n'est qu'un de ses sens)
 
@@ -387,7 +387,7 @@ Le moment où l'utilisateur a indiqué avoir vu tout ce qui s'est passé. Elle n
 _English_: Last visit
 
 **Décision tenue**:
-Un Feu vert ou un Refus que rien n'a démenti. Un Feu vert est démenti quand la Livraison qui le suit reçoit un Bug d'origine ou est rouverte ; un Refus, quand le ticket est rouvert. Un Feu vert suivi d'un Retour d'intégration n'est pas démenti : la chaîne a fait son travail. Une Relance ou un Report ne sont jamais ni tenus ni démentis. Provisoire pour une période récente. C'est tout ce que l'historique peut dire d'une Décision : pas qu'elle était bonne, seulement que rien ne l'a contredite.
+Un Feu vert ou un Refus que rien n'a démenti. Un Feu vert est démenti quand la Livraison qui le suit reçoit un Bug d'origine ou est rouverte ; un Refus, quand le ticket est rouvert. Un Feu vert suivi d'un Retour d'intégration n'est pas démenti : la chaîne a fait son travail. La Livraison qui suit un Feu vert est la première clôture après lui (la sienne, s'il ferme le ticket) : tant qu'aucune ne le suit, rien ne l'a démenti. Une Relance ou un Report ne sont jamais ni tenus ni démentis. Provisoire pour une période récente. C'est tout ce que l'historique peut dire d'une Décision : pas qu'elle était bonne, seulement que rien ne l'a contredite.
 _English_: Held decision
 _Avoid_: bonne décision
 
@@ -397,7 +397,7 @@ _English_: Evidenced delivery
 _Avoid_: livraison validée, livraison conforme
 
 **Coût d'attention**:
-Le nombre moyen de Décisions qu'ont demandées les Livraisons passées par la chaîne sur une période. Chaque Relance l'augmente : c'est une fois de plus où l'utilisateur a dû juger.
+Le nombre moyen de Décisions qu'ont demandées les Livraisons passées par la chaîne sur une période. Chaque Relance l'augmente : c'est une fois de plus où l'utilisateur a dû juger. Une Livraison y appartient à la période de sa dernière clôture, comme dans le Débit, avec toutes ses Décisions, celles d'avant une Réouverture comprises. Seules comptent les Livraisons des Projets qui ont À valider, déclaré ou porté par un ticket : ailleurs, aucune ne peut demander de Décision. Sans Livraison passée par la chaîne, il n'y a pas de Coût d'attention.
 _English_: Attention cost
 
 **File de décisions**:
