@@ -158,6 +158,21 @@ describe('Décision tenue', () => {
     ]);
   });
 
+  it('un Feu vert vers En intégration suivi d’un Abandon ou d’un Renoncement n’est pas démenti, rouvert ou non : aucune Livraison ne le suit', () => {
+    const reopened = ['open', 'awaiting_human', 'in_integration', 'closed', 'open'];
+    const tickets = [
+      daily('abandon', reopened, 1, { dependencies: [duplicateOf('x')] }),
+      daily('renoncement', reopened, 1, { labels: ['declined'] }),
+      daily('abandon-ferme', reopened.slice(0, -1), 1, { dependencies: [duplicateOf('x')] }),
+    ];
+
+    expect(decided(tickets)).toEqual({
+      abandon: [{ at: ago(3), sense: 'greenLight', held: true }],
+      renoncement: [{ at: ago(3), sense: 'greenLight', held: true }],
+      'abandon-ferme': [{ at: ago(2), sense: 'greenLight', held: true }],
+    });
+  });
+
   it('un Refus est démenti quand le ticket est rouvert, tenu sinon', () => {
     const tickets = [
       daily('rouvert', ['open', 'awaiting_human', 'closed', 'open'], 1, { dependencies: [duplicateOf('x')] }),

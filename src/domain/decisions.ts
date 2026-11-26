@@ -33,26 +33,29 @@ export type Decision = { at: number; sense: 'greenLight' | 'rejection'; held: bo
  * - en cours, rattaché à un agent, un statut déclaré `wip` (`isDevelopment` : c'est aussi un Retour, d'origine validation), ou En relecture : une Relance ;
  * - tout autre statut non fermé : un Report (ouvert, différé, bloqué, épinglé, un statut inconnu…).
  *
- * Un Feu vert est démenti quand la clôture qui le suit (la sienne, s'il ferme le ticket ; sinon la suivante) est rouverte, ou qu'elle est sa dernière clôture et
- * que la Livraison a reçu un Bug d'origine (`failed`). Un Retour d'intégration ne le dément pas : la chaîne a fait son travail. Tant qu'aucune clôture ne le
- * suit, rien ne l'a démenti. Un Refus est démenti quand sa clôture est rouverte.
+ * Un Feu vert est démenti quand la clôture qui le suit (la sienne, s'il ferme le ticket ; sinon la suivante) est une Livraison, et qu'elle est rouverte ou
+ * qu'elle est sa dernière clôture et a reçu un Bug d'origine (`failed`). Un Abandon ou un Renoncement qui suit un Feu vert vers En intégration, rouvert ou
+ * non, ne le dément pas ; un Retour d'intégration non plus : la chaîne a fait son travail. Tant qu'aucune clôture ne le suit, rien ne l'a démenti. Un Refus est
+ * démenti quand sa clôture est rouverte.
  *
  * `declared` : les statuts personnalisés que le Projet déclare, qui disent lesquels de ses autres statuts comptent comme en cours.
  */
 export function decisionsOf(steps: readonly Step[], ticket: Pick<TrackedTicket, 'closesAs' | 'failed'>, declared: DeclaredStatuses): Decision[] {
+  const delivers = ticket.closesAs === 'delivered'; // chacune de ses clôtures est une Livraison, ou aucune (`closesAs`)
   const reopened = (index: number) => index < steps.length - 1; // une clôture suivie d'un autre statut, forcément non fermé : une Réouverture
-  // Pour chaque statut, la clôture qui le suit (lui compris) a-t-elle été démentie ? undefined : aucune clôture ne le suit.
+  // Pour chaque statut, la Livraison qui le suit (lui compris) a-t-elle été démentie ? undefined : aucune Livraison ne le suit, faute de clôture ou parce que
+  // ses clôtures sont des Abandons ou des Renoncements.
   const contradicted: Array<boolean | undefined> = [];
   let next: boolean | undefined;
   for (let index = steps.length - 1; index >= 0; index--) {
-    if (steps[index]?.status === 'closed') next = reopened(index) || ticket.failed;
+    if (delivers && steps[index]?.status === 'closed') next = reopened(index) || ticket.failed;
     contradicted[index] = next;
   }
 
   return steps.flatMap((step, index): Decision[] => {
     if (steps[index - 1]?.status !== 'awaiting_human') return [];
     const { at, status } = step;
-    if (status === 'closed' && ticket.closesAs !== 'delivered') return [{ at, sense: 'rejection', held: !reopened(index) }];
+    if (status === 'closed' && !delivers) return [{ at, sense: 'rejection', held: !reopened(index) }];
     if (status === 'closed' || status === 'in_integration') return [{ at, sense: 'greenLight', held: contradicted[index] !== true }];
     if (status === 'in_review' || isDevelopment(status, declared)) return [{ at, sense: 'rerun' }];
     return [{ at, sense: 'postponement' }];

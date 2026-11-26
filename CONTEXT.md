@@ -387,7 +387,7 @@ Le moment où l'utilisateur a indiqué avoir vu tout ce qui s'est passé. Elle n
 _English_: Last visit
 
 **Décision tenue**:
-Un Feu vert ou un Refus que rien n'a démenti. Un Feu vert est démenti quand la Livraison qui le suit reçoit un Bug d'origine ou est rouverte ; un Refus, quand le ticket est rouvert. Un Feu vert suivi d'un Retour d'intégration n'est pas démenti : la chaîne a fait son travail. La Livraison qui suit un Feu vert est la première clôture après lui (la sienne, s'il ferme le ticket) : tant qu'aucune ne le suit, rien ne l'a démenti. Une Relance ou un Report ne sont jamais ni tenus ni démentis. Provisoire pour une période récente. C'est tout ce que l'historique peut dire d'une Décision : pas qu'elle était bonne, seulement que rien ne l'a contredite.
+Un Feu vert ou un Refus que rien n'a démenti. Un Feu vert est démenti quand la Livraison qui le suit reçoit un Bug d'origine ou est rouverte ; un Refus, quand le ticket est rouvert. Un Feu vert suivi d'un Retour d'intégration n'est pas démenti : la chaîne a fait son travail. Seule la première clôture après un Feu vert (la sienne, s'il ferme le ticket) peut le démentir, et seulement si c'est une Livraison : tant qu'aucune clôture ne le suit, rien ne l'a démenti, et un Abandon ou un Renoncement qui le suit, rouvert ou non, ne le dément pas. Une Relance ou un Report ne sont jamais ni tenus ni démentis. Provisoire pour une période récente. C'est tout ce que l'historique peut dire d'une Décision : pas qu'elle était bonne, seulement que rien ne l'a contredite.
 _English_: Held decision
 _Avoid_: bonne décision
 
