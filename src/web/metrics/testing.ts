@@ -256,9 +256,10 @@ export const NO_BUGS: MetricsSignificance = {
 export function reviewFixture(deliveries = 0, significance: MetricsSignificance = LOW_COVERAGE, overrides: Partial<MetricsReview> = {}): MetricsReview {
   return {
     deliveries,
+    handedOff: 0,
     reviewed: 0,
     coverage: deliveries === 0 ? null : 0,
-    firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10 },
+    firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: noTrend },
     roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
     failureRate: { ...significance, reviewed: { deliveries: 0, failed: 0, rate: null }, unreviewed: { deliveries, failed: 0, rate: deliveries === 0 ? null : 0 } },
     sendBacks: { review: 0, integration: 0, validation: 0 },
@@ -443,6 +444,35 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
     decisions: decisionsFixture(),
     ...overrides,
   };
+}
+
+/**
+ * Une réponse dont des Livraisons sont passées par les Statuts de relais (bdesk-pz0.8) : celle de `metricsFixture`, avec 14 de ses 18 Livraisons passées par
+ * la chaîne et 12 relues, dont 9 sans Retour (75 %, contre 60 % la période précédente) ; 6 Retours. Le Taux d'échec après relecture reprend la Couverture
+ * de la fixture, trop faible. Les 31 j de Cycle Time cumulé se répartissent en 14 j de Développement, 3 j de Correction, 5 j de Relecture, 2,5 j
+ * d'Intégration, 4 j d'Attente humaine et 2,5 j de Blocage ; 6 Livraisons ont attendu (médiane 8 h, P85 30 h). `overrides` remplace des morceaux entiers.
+ */
+export function agentChainFixture(overrides: Partial<MetricsResponse> = {}): MetricsResponse {
+  return metricsFixture({
+    review: reviewFixture(18, LOW_COVERAGE, {
+      handedOff: 14,
+      reviewed: 12,
+      coverage: 12 / 18,
+      firstPassAcceptance: { accepted: 9, reviewed: 12, rate: 0.75, significant: true, minReviewed: 10, trend: trendOf(0.75, 0.6) },
+      roundsPerDelivery: { one: 9, two: 2, three: 0, fourOrMore: 1 },
+      failureRate: { ...LOW_COVERAGE, reviewed: { deliveries: 12, failed: 0, rate: 0 }, unreviewed: { deliveries: 6, failed: 0, rate: 0 } },
+      sendBacks: { review: 4, integration: 1, validation: 1 },
+    }),
+    cycleTimeBreakdown: cycleTimeBreakdownFixture(18, 28.5 * DAY, 2.5 * DAY, {
+      development: 14 * DAY,
+      correction: 3 * DAY,
+      review: 5 * DAY,
+      integration: 2.5 * DAY,
+      humanWait: 4 * DAY,
+      humanWaits: { waited: 6, stats: { median: 8 * HOUR, p85: 30 * HOUR, n: 6 }, reliable: true, minDeliveries: 4, share: 4 / 31 },
+    }),
+    ...overrides,
+  });
 }
 
 /** Un Projet sans Livraison sur la période : toutes les durées sont indéfinies, le CFD ne bouge pas, rien n'est en cours. */

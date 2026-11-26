@@ -118,6 +118,17 @@ function measuresIn(language: Language) {
       negligible: (delta) => Math.abs(delta) < 0.0005,
       showRatio: false,
     },
+    /** Acceptation au premier passage : une part de 0 à 1, dont l'écart se lit en points ; plus haute, c'est mieux. */
+    acceptance: {
+      language,
+      polarity: 'higher-is-better',
+      format: (value) => formatPercent(value, { precise: true }),
+      formatDelta: formatPoints,
+      speak: (value) => formatPercent(value, { precise: true }),
+      speakDelta: spokenPoints,
+      negligible: (delta) => Math.abs(delta) < 0.0005,
+      showRatio: false,
+    },
     /** Taux d'abandon : une part de 0 à 1 lue en points, ni bonne ni mauvaise à la hausse (fermer des doublons relève de la bonne hygiène). */
     abandonment: {
       language,

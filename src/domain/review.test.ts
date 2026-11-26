@@ -133,9 +133,10 @@ describe('mesures de relecture de la période', () => {
   it('aucun Tour, aucune Livraison : tout est vide ou indéfini', () => {
     expect(reviewIn([project([ticket('o', [['open', ago(3)]])])])).toEqual({
       deliveries: 0,
+      handedOff: 0,
       reviewed: 0,
       coverage: null,
-      firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10 },
+      firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: { previous: null, delta: null, ratio: null } },
       roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
       failureRate: expect.objectContaining({
         reviewed: { deliveries: 0, failed: 0, rate: null },
@@ -299,7 +300,56 @@ describe('mesures de relecture de la période', () => {
   ])('le seuil : %i Livraisons relues, Acceptation au premier passage significative : %s', (n, significant) => {
     const tickets = Array.from({ length: n }, (_, i) => delivered(`t${i}`, ['in_progress', 'in_review', ...(i === 0 ? ['in_progress', 'in_review'] : [])]));
     const { firstPassAcceptance } = reviewIn([project([...tickets, delivered('non-relue', ['in_progress'])])]);
-    expect(firstPassAcceptance).toEqual({ accepted: n - 1, reviewed: n, rate: (n - 1) / n, significant, minReviewed: 10 });
+    expect(firstPassAcceptance).toEqual({
+      accepted: n - 1,
+      reviewed: n,
+      rate: (n - 1) / n,
+      significant,
+      minReviewed: 10,
+      trend: { previous: null, delta: null, ratio: null },
+    });
+  });
+
+  it('la tendance de l’Acceptation au premier passage (bdesk-pz0.8) : la période précédente, comptée jusqu’à l’instant qui correspond à maintenant', () => {
+    /** Une Livraison fermée il y a `days` jours, dont les statuts intermédiaires se suivent d'heure en heure à partir de deux jours plus tôt. */
+    const closedAgo = (id: string, days: number, middle: string[]) =>
+      ticket(id, [['open', ago(days + 3)], ...middle.map((status, i): [string, number] => [status, ago(days + 2) + i * 3_600_000]), ['closed', ago(days)]]);
+    const accepted = ['in_progress', 'in_review'];
+    const sentBack = ['in_progress', 'in_review', 'in_progress', 'in_review'];
+    // La période court du samedi 17 octobre (minuit à Paris) à maintenant, vendredi 23 à 18:00Z ; la précédente du samedi 10, comptée jusqu'au
+    // vendredi 16 à 18:00Z, il y a 7 jours.
+    const tickets = [
+      delivered('courante-ok', accepted),
+      delivered('courante-ko', sentBack),
+      closedAgo('avant-ok', 8, accepted),
+      closedAgo('avant-ok2', 9, accepted),
+      closedAgo('avant-ko', 10, sentBack),
+      // Fermée dans la période précédente, mais après l'instant qui correspond à maintenant : hors de la comparaison.
+      closedAgo('apres-l-instant', 6.9, sentBack),
+    ];
+    const { firstPassAcceptance } = reviewIn([project(tickets)]);
+    expect(firstPassAcceptance).toMatchObject({ accepted: 1, reviewed: 2, rate: 0.5 });
+    expect(firstPassAcceptance.trend.previous).toBeCloseTo(2 / 3);
+    expect(firstPassAcceptance.trend.delta).toBeCloseTo(0.5 - 2 / 3);
+    expect(firstPassAcceptance.trend.ratio).toBeCloseTo(-0.25);
+  });
+
+  it('sans Livraison relue sur la période précédente, la tendance n’a rien à comparer', () => {
+    const { firstPassAcceptance } = reviewIn([project([delivered('relue', ['in_progress', 'in_review'])])]);
+    expect(firstPassAcceptance.trend).toEqual({ previous: null, delta: null, ratio: null });
+  });
+
+  it('les Livraisons passées par un Statut de relais (bdesk-pz0.8) : n’importe lequel, avant une Réouverture comprise ; ni le travail à la main ni un ticket ouvert', () => {
+    const tickets = [
+      delivered('relue', ['in_progress', 'in_review']),
+      delivered('integree', ['in_progress', 'in_integration']),
+      delivered('validee', ['in_progress', 'awaiting_human']),
+      ticket('creee-a-valider', [['awaiting_human', ago(3)], ['closed', ago(1)]]),
+      ticket('rouverte', [['open', ago(6)], ['in_review', ago(5)], ['closed', ago(4)], ['open', ago(3)], ['in_progress', ago(2.5)], ['closed', ago(1)]]),
+      delivered('a-la-main', ['in_progress']),
+      ticket('en-cours', [['open', ago(3)], ['in_review', ago(2)]]),
+    ];
+    expect(reviewIn([project(tickets)])).toMatchObject({ deliveries: 6, handedOff: 5, reviewed: 2 });
   });
 
   it('Taux d’échec après relecture : celui des Livraisons relues à côté de celui des autres ; le Taux d’échec global ne change pas', () => {
