@@ -75,8 +75,14 @@ const fr = {
     /** « 2 sur 21 clôtures » : une part et son tout, déjà écrits. */
     outOf: (part: string, whole: string) => `${part} sur ${whole}`,
     notSignificant: ', non significatif',
-    /** `reason` commence par une majuscule (« Couverture insuffisante… ») : en français, la phrase la met en minuscule après les deux-points. */
-    failureNote: (reason: string) => `Taux d’échec non significatif : ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`,
+    /** Le Débit sain d'une période qui court (bdesk-3e9.8), comme sa tuile le dit : des Livraisons peuvent encore revenir. */
+    provisional: ', provisoire',
+    /**
+     * Sous le tableau, le motif d'un indicateur non significatif (le Débit sain, le Taux d'échec) : `measure` est son nom, masculin. `reason` commence par une
+     * majuscule (« Couverture insuffisante… ») : en français, la phrase la met en minuscule après les deux-points.
+     */
+    notSignificantNote: (measure: string, reason: string) => `${measure} non significatif : ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`,
+    soundProvisional: 'Débit sain provisoire : des Livraisons peuvent encore revenir.',
     better: ', en mieux',
     worse: ', en moins bien',
     stable: 'stable',
@@ -90,6 +96,13 @@ const fr = {
     humanWaitNote: (deliveries: string, n: number, percent: string) =>
       `Attente humaine : médiane et P85 ${n >= 2 ? `des ${deliveries} qui ont` : `de ${deliveries} qui a`} attendu votre validation ; ${percent} du Cycle Time cumulé de la période.`,
     humanWaitUnreliable: (minimum: string) => ` Moins de ${minimum} Livraisons : les centiles ne disent pas grand-chose.`,
+    /**
+     * La section Décisions (bdesk-3e9.8), quand la page a ses onglets : ses titres et ses phrases sont ceux de l'onglet Décisions (`decisionsTab`,
+     * `heldDecisions`, `evidenced`…). Ici, les Feux verts ou les Refus d'un sens que rien n'a démentis : « 5 tenus », « 0 tenu ».
+     */
+    held: (n: number, count: string) => `${count} ${n >= 2 ? 'tenus' : 'tenu'}`,
+    /** Un titre suivi de ce qu'il compte, déjà écrit : « Livraisons sans Feu vert (1 Livraison) ». */
+    headingCount: (heading: string, count: string) => `${heading} (${count})`,
     longTrend: (weeks: string, n: number) => `Tendance longue (${weeks} ${n >= 2 ? 'semaines' : 'semaine'})`,
     weekOf: 'Semaine du',
     running: ' (en cours)',
@@ -189,7 +202,9 @@ const en: typeof fr = {
     closures: (count, n) => `${count} ${n === 1 ? 'closure' : 'closures'}`,
     outOf: (part, whole) => `${part} of ${whole}`,
     notSignificant: ', not significant',
-    failureNote: (reason) => `Change failure rate not significant: ${reason.startsWith('Coverage') ? reason : `${reason.charAt(0).toLowerCase()}${reason.slice(1)}`}`,
+    provisional: ', provisional',
+    notSignificantNote: (measure, reason) => `${measure} not significant: ${reason.startsWith('Coverage') ? reason : `${reason.charAt(0).toLowerCase()}${reason.slice(1)}`}`,
+    soundProvisional: 'Sound throughput provisional: Deliveries may still come back.',
     better: ', better',
     worse: ', worse',
     stable: 'steady',
@@ -201,6 +216,8 @@ const en: typeof fr = {
     humanWaitNote: (deliveries, _n, percent) =>
       `Human wait: median and P85 of the ${deliveries} that waited for your validation; ${percent} of the period’s cumulative Cycle Time.`,
     humanWaitUnreliable: (minimum) => ` Fewer than ${minimum} Deliveries: the percentiles say little.`,
+    held: (_n, count) => `${count} held`,
+    headingCount: (heading, count) => `${heading} (${count})`,
     longTrend: (weeks, n) => `Long trend (${weeks} ${n === 1 ? 'week' : 'weeks'})`,
     weekOf: 'Week of',
     running: ' (in progress)',

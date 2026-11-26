@@ -28,7 +28,8 @@ describe('motif d’un Taux d’échec non significatif', () => {
 
 describe('note du Rapport de rétrospective, en anglais', () => {
   it('garde la majuscule de Coverage, met la minuscule à tout autre motif', () => {
-    const note = CATALOGS.en.metrics.retrospective.failureNote;
+    const { notSignificantNote, failureRate } = CATALOGS.en.metrics.retrospective;
+    const note = (reason: string) => notSignificantNote(failureRate, reason);
     expect(note(failureRateReason({ reasons: ['few-bugs'], coverage: { bugs: 0, linked: 0, ratio: null }, thresholds }, 'en') ?? '')).toBe(
       'Change failure rate not significant: too few bugs to conclude: 0 (minimum 5).',
     );
