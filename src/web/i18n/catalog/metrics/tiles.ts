@@ -78,6 +78,9 @@ const fr = {
       'L’Acceptation au premier passage des seules Livraisons relues qui avaient une Intention écrite, des critères d’acceptation non vides, à leur premier démarrage. À comparer avec celle des autres : écrire l’intention avant de démarrer évite-t-il des Retours ? Non significative sous 10 Livraisons relues.',
     acceptanceWithoutIntent:
       'L’Acceptation au premier passage des Livraisons relues sans Intention écrite à leur premier démarrage : sans critères d’acceptation, ou avec des critères écrits ensuite, ou que l’historique ne permet pas de lire. Non significative sous 10 Livraisons relues.',
+    /** La Carte d'activité (`ActivityMap.tsx`), dans l'analyse du flux et parmi les deux horloges de l'onglet Décisions. */
+    activityMap:
+      'Les Transitions de la période, les changements de statut des tickets, selon le jour de la semaine et l’heure où elles ont eu lieu, dans votre fuseau : une case par jour et par heure, du lundi au dimanche. La création d’un ticket n’en est pas une (c’est une Arrivée), et les Epics ne comptent pas. Comptes bruts, non rapportés au nombre de lundis ou de mardis de la période ; l’intensité d’une case se lit par rapport à la case la plus chargée de la carte. Elle dit quand le travail avance ; les Heures à l’arrêt, quand rien n’a bougé alors que du travail attendait.',
     decisionMap:
       'Les Décisions de la période selon le jour de la semaine et l’heure où vous les avez prises, dans votre fuseau, à lire à côté de la Carte d’activité : l’horloge de la chaîne face à la vôtre. Comptes bruts ; l’intensité d’une case se lit, comme sur la Carte d’activité, par rapport à la case la plus chargée de la carte.',
   },
@@ -338,6 +341,8 @@ const en: typeof fr = {
       'First-pass acceptance of the Reviewed deliveries that had a Written intent, non-empty acceptance criteria, when first started. Compare it with the others: does writing the intent before starting avoid Send-backs? Not significant under 10 Reviewed deliveries.',
     acceptanceWithoutIntent:
       'First-pass acceptance of the Reviewed deliveries without a Written intent when first started: no acceptance criteria, criteria written later, or criteria the history cannot read. Not significant under 10 Reviewed deliveries.',
+    activityMap:
+      'The period’s Transitions, the tickets’ status changes, by the day of the week and hour they happened, in your time zone: one cell per day and hour, Monday to Sunday. Creating a ticket is not one (it is an Arrival), and Epics do not count. Raw counts, not adjusted for how many Mondays or Tuesdays the period has; a cell’s intensity is read against the busiest cell of the map. It tells when work moves; the Stalled hours, when nothing moved while work was waiting.',
     decisionMap:
       'The period’s Decisions by the day of the week and hour you made them, in your time zone, to read next to the Activity map: the chain’s clock against yours. Raw counts; as on the Activity map, a cell’s intensity is read against the busiest cell of its own map.',
   },

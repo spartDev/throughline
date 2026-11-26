@@ -16,7 +16,7 @@ import { addDays } from './scales';
  *
  * Une valeur que la page ne comprend pas ne bloque rien et ne passe pas en silence : la page retombe sur le réglage
  * par défaut et le dit (`notices`), pour qu'une faute de frappe dans un lien partagé ne donne pas d'autres chiffres
- * sans prévenir.
+ * sans prévenir. L'onglet seul attend la réponse du serveur pour le dire (`tabNotice`) : sans onglets, `?tab=` ne règle rien.
  */
 
 /** Une page de Projet (`/p/:projet/metrics`) ou la Vue globale (`/overview`). */
@@ -163,6 +163,12 @@ export interface ParsedMetricsParams {
   tab: MetricsTab;
   /** Ce que l'adresse demandait et que la page ne peut pas servir, dans la langue de l'interface. Vide quand tout est compris. */
   notices: string[];
+  /**
+   * L'avis d'un onglet que l'adresse demande et qui n'existe pas, à part des autres : seule la réponse du serveur dit si la page a ses onglets
+   * (`MetricsResponse.handoff`), et sans eux `?tab=` ne règle rien, comme avant les onglets : la page n'en dit rien. Null quand l'adresse ne demande pas
+   * d'onglet ou en demande un qui existe.
+   */
+  tabNotice: string | null;
 }
 
 /**
@@ -200,9 +206,9 @@ export function parseMetricsParams(params: URLSearchParams, scope: Scope, today:
 
   const asked = params.get(TAB);
   const tab = asked === null ? undefined : TABS.find((candidate) => candidate === asked);
-  if (asked !== null && tab === undefined) notices.push(texts.unknownTab(asked, TABS.join(', ')));
+  const tabNotice = asked !== null && tab === undefined ? texts.unknownTab(asked, TABS.join(', ')) : null;
 
-  return { period, by: dimension, tab: tab ?? DEFAULT_TAB, notices };
+  return { period, by: dimension, tab: tab ?? DEFAULT_TAB, notices, tabNotice };
 }
 
 /** Les `days` derniers jours jusqu'à `today` compris : la plage d'un préréglage, écrite en jours. */

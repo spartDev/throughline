@@ -8,7 +8,8 @@ import { TABS, type MetricsTab } from './params';
  * (`tablist`) nommée, un seul onglet dans l'ordre de tabulation, celui qui est choisi ; les flèches gauche et droite passent à l'onglet voisin (de bout en
  * bout), Origine et Fin au premier et au dernier, et le choisissent aussitôt (activation automatique : le panneau suivant est déjà là, sans requête). Le
  * panneau (`tabpanel`) est nommé par son onglet et entre dans l'ordre de tabulation : il commence par un intertitre, qu'on n'atteindrait pas sinon. Seul le
- * panneau de l'onglet choisi est rendu : l'onglet qui n'est pas choisi ne désigne pas de panneau (`aria-controls`).
+ * panneau de l'onglet choisi est rendu : l'onglet qui n'est pas choisi ne désigne pas de panneau (`aria-controls`). Avec Alt, Cmd ou Ctrl, ces touches
+ * restent au navigateur et au système (Alt+← et Cmd+← reviennent à la page précédente) : les onglets ne les prennent ni ne les annulent.
  *
  * L'onglet choisi vit dans l'adresse (`?tab=`, `withTab`) : la page le lit, et c'est elle qui le change (`onChange`).
  */
@@ -20,6 +21,7 @@ export function MetricsTabs({ tab, onChange, children }: { tab: MetricsTab; onCh
   const panelId = `${base}-panel`;
 
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.altKey || event.metaKey || event.ctrlKey) return;
     const index = TABS.indexOf(tab);
     const last = TABS.length - 1;
     const target = { ArrowRight: index === last ? 0 : index + 1, ArrowLeft: index === 0 ? last : index - 1, Home: 0, End: last }[event.key];

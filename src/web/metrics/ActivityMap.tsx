@@ -188,12 +188,13 @@ function LevelLegend({ label }: { label: string }) {
 
 /**
  * La carte « Carte d'activité » : les Transitions de la période par jour de la semaine et par heure du fuseau des métriques,
- * son pic, et toutes les valeurs en tableau.
+ * son pic, et toutes les valeurs en tableau. Elle a son aide, comme chaque mesure de l'onglet Décisions, où elle est l'une des deux horloges (bdesk-3e9.7).
  */
 export function ActivityPanel({ activity, timeZone }: { activity: MetricsActivity; timeZone: string }) {
   const view = useMemo(() => describeActivity(activity), [activity]);
   const peak = view.peak;
-  const t = useT().metrics.activityMap;
+  const metrics = useT().metrics;
+  const t = metrics.activityMap;
   const words = useActivityWords();
   const format = useFormat();
   const { language } = useLanguage();
@@ -202,6 +203,7 @@ export function ActivityPanel({ activity, timeZone }: { activity: MetricsActivit
     <ChartCard
       className="h-full"
       title={t.title}
+      help={metrics.metricHelp.activityMap}
       description={
         (view.empty
           ? t.descriptionEmpty(timeZone)

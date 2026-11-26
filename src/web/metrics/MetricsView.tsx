@@ -46,6 +46,12 @@ import './metrics.css';
 /** Ce que la page mesure : un Projet, ou tous (Vue globale). */
 export type MetricsScope = { kind: 'global' } | { kind: 'project'; project: { id: string; name: string } };
 
+/**
+ * La page a ses onglets (bdesk-3e9.7) quand un Projet de la vue a les Statuts de relais, déclarés ou portés, quelle que soit la période. Sans eux, la page est
+ * celle d'avant : le Flux seul, et `?tab=` n'y règle rien.
+ */
+const hasTabs = (data: MetricsResponse): boolean => data.handoff.length > 0;
+
 /** Aujourd'hui (AAAA-MM-JJ) dans ce fuseau. */
 const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString(), timeZone);
 
@@ -94,7 +100,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const elsewhere = lastAnswer !== undefined && !lastAnswer.honoured ? lastAnswer : undefined;
   const counted = elsewhere !== undefined && isKnownTimeZone(elsewhere.counted) ? elsewhere.counted : asked;
   const today = todayIn(counted);
-  const { period, by, tab, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today, language), [searchParams, kind, today, language]);
+  const { period, by, tab, notices, tabNotice } = useMemo(() => parseMetricsParams(searchParams, kind, today, language), [searchParams, kind, today, language]);
 
   const query = useMetrics({ project: scope.kind === 'project' ? scope.project.id : undefined, period, timeZone: asked });
   // Les chiffres gardés (`isPlaceholderData`) sont ceux de la période précédente : tant qu'ils le sont, et que l'attente se remarque, l'écran le dit.
@@ -102,6 +108,8 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const retry = useRetryFocus(query);
   const projects = useProjects();
   const data = query.data;
+  // Un onglet inconnu ne se dit qu'à une page qui a ses onglets, donc avec la réponse du serveur : sans eux, la page ne lit pas `?tab=` et n'en parle pas.
+  const shownNotices = tabNotice !== null && data !== undefined && hasTabs(data) ? [...notices, tabNotice] : notices;
   // Quand le fuseau du navigateur change, le squelette remplace les chiffres de l'ancien (`useMetrics`) : il garde leur hauteur le temps de la réponse (bdesk-38k.81), pour que la page ne rétrécisse pas
   // et que le défilement de qui lisait plus bas ne soit pas perdu ; et les chiffres qui arrivent ne laissent pas l'ancrage du défilement suivre leur première mise en page. La hauteur est mesurée sur
   // l'enveloppe des chiffres, par Projet ou Vue globale : celle d'un autre Projet ne vaut pas pour celui-ci.
@@ -155,7 +163,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
           précédente, comptés dans le même fuseau du serveur (jamais ceux d'un autre fuseau demandé : bdesk-38k.79). Retiré puis remis avec la réponse, il faisait sauter la page (bdesk-38k.71). */}
       {elsewhere !== undefined ? <ZoneNotice asked={asked} counted={elsewhere.counted} /> : null}
 
-      {notices.length > 0 ? <AddressNotices notices={notices} /> : null}
+      {shownNotices.length > 0 ? <AddressNotices notices={shownNotices} /> : null}
 
       {data ? (
         // Les chiffres partent, et le squelette les remplace, quand le fuseau du navigateur change (`useMetrics` ne garde pas ceux de l'ancien) ; le focus qu'ils tenaient (une puce de tendance,
@@ -223,7 +231,7 @@ function Content({
           <JourneyPanel tiles={data.tiles} health={data.health} cfd={data.cfd} comparison={comparison} signalsHref={signalsHref} />
 
           {/* Les onglets (bdesk-3e9.7) : seulement si un Projet de la vue a les Statuts de relais, déclarés ou portés, quelle que soit la période. Sans eux, la page est celle d'avant. */}
-          {data.handoff.length === 0 ? (
+          {!hasTabs(data) ? (
             flow
           ) : (
             <MetricsTabs tab={tab} onChange={onTabChange}>

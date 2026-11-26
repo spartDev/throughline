@@ -182,7 +182,7 @@ function HeldDecisionsPanel({ weeks }: { weeks: readonly MetricsDecisionsWeek[] 
                 top={top}
                 color={HELD}
                 label={texts.heldLabel(held(sum(heldOf)), weekCount)}
-                describe={(count, week) => (week.partial ? texts.provisionalPoint(held(count)) : held(count))}
+                describe={(count, week) => (week.partial ? texts.provisionalPoint(held(count), count) : held(count))}
                 width={width}
                 height={height}
               />
@@ -257,8 +257,8 @@ function HeldDecisionsTile({ decisions }: { decisions: MetricsDecisions }) {
       </Value>
       {judged > 0 ? (
         <div className="flex flex-col gap-1 border-t border-line pt-2">
-          <p className="text-micro text-ink-3 tnum">{texts.greenLights(formatCount(greenLights.held), formatCount(greenLights.total))}</p>
-          <p className="text-micro text-ink-3 tnum">{texts.rejections(formatCount(rejections.held), formatCount(rejections.total))}</p>
+          <p className="text-micro text-ink-3 tnum">{texts.greenLights(formatCount(greenLights.held), greenLights.held, formatCount(greenLights.total))}</p>
+          <p className="text-micro text-ink-3 tnum">{texts.rejections(formatCount(rejections.held), rejections.held, formatCount(rejections.total))}</p>
           {decisions.provisional ? <Provisional>{texts.provisional}</Provisional> : null}
         </div>
       ) : null}
@@ -320,7 +320,7 @@ function EvidencedDeliveriesTile({ evidenced }: { evidenced: MetricsEvidencedDel
   const { deliveries, share, mostMissing, missing } = evidenced;
   return (
     <Tile title={texts.title} help={t.metrics.metricHelp.evidencedDeliveries} sample={texts.chained(deliveries, formatCount(deliveries))}>
-      <Value muted={share === null} caption={share === null ? texts.none : texts.evidencedOf(formatCount(evidenced.evidenced), formatCount(deliveries))}>
+      <Value muted={share === null} caption={share === null ? texts.none : texts.evidencedOf(formatCount(evidenced.evidenced), evidenced.evidenced, formatCount(deliveries))}>
         {formatPercent(share, { precise: true })}
       </Value>
       {deliveries > 0 ? (

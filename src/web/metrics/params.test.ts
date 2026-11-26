@@ -45,7 +45,7 @@ describe('MIN_CUSTOM_DAY', () => {
 
 describe('parseMetricsParams : la période', () => {
   it('prend les 30 derniers jours quand l’adresse n’en dit rien', () => {
-    expect(parse('')).toEqual({ period: { kind: 'preset', range: '30d' }, by: 'type', tab: 'decisions', notices: [] });
+    expect(parse('')).toEqual({ period: { kind: 'preset', range: '30d' }, by: 'type', tab: 'decisions', notices: [], tabNotice: null });
     expect(DEFAULT_PERIOD).toEqual({ kind: 'preset', range: '30d' });
   });
 
@@ -212,16 +212,22 @@ describe('isCivilDay et spanInDays', () => {
 describe('l’onglet (bdesk-3e9.7)', () => {
   it('Décisions par défaut ; l’adresse peut demander Flux ou Décisions', () => {
     expect(parse('').tab).toBe('decisions');
-    expect(parse('tab=flow')).toMatchObject({ tab: 'flow', notices: [] });
-    expect(parse('tab=decisions&range=7d', 'global')).toMatchObject({ tab: 'decisions', period: { kind: 'preset', range: '7d' }, notices: [] });
+    expect(parse('tab=flow')).toMatchObject({ tab: 'flow', notices: [], tabNotice: null });
+    expect(parse('tab=decisions&range=7d', 'global')).toMatchObject({ tab: 'decisions', period: { kind: 'preset', range: '7d' }, notices: [], tabNotice: null });
   });
 
-  it('un onglet qui n’existe pas retombe sur Décisions et le dit', () => {
+  it('un onglet qui n’existe pas retombe sur Décisions et le dit à part : seule la réponse du serveur dit si la page a ses onglets', () => {
     expect(parse('tab=chaine')).toEqual({
       period: { kind: 'preset', range: '30d' },
       by: 'type',
       tab: 'decisions',
-      notices: ['L’onglet « chaine » n’existe pas (decisions, flow) : l’onglet par défaut est affiché.'],
+      notices: [],
+      tabNotice: 'L’onglet « chaine » n’existe pas (decisions, flow) : l’onglet par défaut est affiché.',
+    });
+    // Les avis de la période et du découpage, eux, ne dépendent pas des onglets.
+    expect(parse('tab=chaine&range=12d')).toMatchObject({
+      notices: ['La période « 12d » n’existe pas (7d, 30d ou 90d). Les 30 derniers jours sont affichés.'],
+      tabNotice: 'L’onglet « chaine » n’existe pas (decisions, flow) : l’onglet par défaut est affiché.',
     });
   });
 

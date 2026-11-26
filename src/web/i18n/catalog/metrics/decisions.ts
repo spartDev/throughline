@@ -33,9 +33,9 @@ const fr = {
     /** Sous la valeur : `judged` est déjà écrit, `percent` la part tenue. */
     heldOf: (judged: string, percent: string) => `sur ${judged}, ${percent}`,
     none: 'Aucun Feu vert ni Refus sur la période.',
-    /** Le détail par sens : « Feux verts : 10 tenus sur 11 ». */
-    greenLights: (held: string, total: string) => `Feux verts : ${held} tenus sur ${total}`,
-    rejections: (held: string, total: string) => `Refus : ${held} tenus sur ${total}`,
+    /** Le détail par sens : « Feux verts : 10 tenus sur 11 », « Refus : 1 tenu sur 2 » ; `n` (les tenus) choisit le pluriel. */
+    greenLights: (held: string, n: number, total: string) => `Feux verts : ${held} ${n >= 2 ? 'tenus' : 'tenu'} sur ${total}`,
+    rejections: (held: string, n: number, total: string) => `Refus : ${held} ${n >= 2 ? 'tenus' : 'tenu'} sur ${total}`,
     provisional: 'Provisoire : la période court, et ses Décisions n’ont pas toutes eu le temps d’être démenties.',
     weeklyTitle: 'Décisions tenues par semaine',
     weeklyDescription:
@@ -48,8 +48,11 @@ const fr = {
     judgedLabel: (judged: string, weeks: string) => `Feux verts et Refus par semaine : ${judged} sur ${weeks} semaines.`,
     held: (n: number, count: string) => (n === 0 ? 'aucun tenu' : `${count} ${n >= 2 ? 'tenus' : 'tenu'}`),
     heldLabel: (held: string, weeks: string) => `Décisions tenues par semaine : ${held} sur ${weeks} semaines.`,
-    /** Les Décisions tenues de la semaine en cours, dans l'infobulle de sa barre : `value` est déjà écrit (« 3 tenus »). */
-    provisionalPoint: (value: string) => `${value}, provisoire : rien ne les a encore démentis`,
+    /**
+     * Les Décisions tenues de la semaine en cours, dans l'infobulle de sa barre : `value` est déjà écrit (« 3 tenus »), `n` choisit le pluriel. Jamais 0 : une
+     * semaine sans Décision tenue n'a pas de barre.
+     */
+    provisionalPoint: (value: string, n: number) => `${value}, provisoire : rien ne ${n >= 2 ? 'les a encore démentis' : 'l’a encore démenti'}`,
     caption: 'Décisions, Feux verts, Refus et Décisions tenues de chacune des 12 dernières semaines',
     weekColumn: 'Semaine',
     decisionsColumn: 'Décisions',
@@ -81,8 +84,8 @@ const fr = {
   evidenced: {
     title: 'Livraisons prouvées',
     chained: (n: number, count: string) => `${count} ${n >= 2 ? 'passées par la chaîne' : 'passée par la chaîne'}`,
-    /** Sous la valeur : « 6 sur 9 prouvées ». */
-    evidencedOf: (evidenced: string, deliveries: string) => `${evidenced} sur ${deliveries} prouvées`,
+    /** Sous la valeur : « 6 sur 9 prouvées », « 1 sur 9 prouvée » ; `n` (les prouvées) choisit le pluriel. */
+    evidencedOf: (evidenced: string, n: number, deliveries: string) => `${evidenced} sur ${deliveries} ${n >= 2 ? 'prouvées' : 'prouvée'}`,
     none: 'Aucune Livraison passée par la chaîne sur la période.',
     /** `evidence` : le nom de la preuve, déjà écrit. */
     mostMissing: (evidence: string) => `Le plus souvent, il manque : ${evidence}.`,
@@ -164,8 +167,8 @@ const en: typeof fr = {
     judged: (n, count) => (n === 0 ? 'no Green lights or Rejections' : `${count} ${n === 1 ? 'Green light or Rejection' : 'Green lights and Rejections'}`),
     heldOf: (judged, percent) => `of ${judged}, ${percent}`,
     none: 'No Green lights or Rejections in the period.',
-    greenLights: (held, total) => `Green lights: ${held} held of ${total}`,
-    rejections: (held, total) => `Rejections: ${held} held of ${total}`,
+    greenLights: (held, _n, total) => `Green lights: ${held} held of ${total}`,
+    rejections: (held, _n, total) => `Rejections: ${held} held of ${total}`,
     provisional: 'Provisional: the period is still running, and its Decisions have not all had time to be contradicted.',
     weeklyTitle: 'Held decisions per week',
     weeklyDescription:
@@ -178,7 +181,7 @@ const en: typeof fr = {
     judgedLabel: (judged, weeks) => `Green lights and Rejections per week: ${judged} over ${weeks} weeks.`,
     held: (n, count) => (n === 0 ? 'none held' : `${count} held`),
     heldLabel: (held, weeks) => `Held decisions per week: ${held} over ${weeks} weeks.`,
-    provisionalPoint: (value) => `${value}, provisional: nothing has contradicted them yet`,
+    provisionalPoint: (value, n) => `${value}, provisional: nothing has contradicted ${n === 1 ? 'it' : 'them'} yet`,
     caption: 'Decisions, Green lights, Rejections and Held decisions for each of the last 12 weeks',
     weekColumn: 'Week',
     decisionsColumn: 'Decisions',
@@ -206,7 +209,7 @@ const en: typeof fr = {
   evidenced: {
     title: 'Evidenced deliveries',
     chained: (n, count) => `${count} through the chain`,
-    evidencedOf: (evidenced, deliveries) => `${evidenced} of ${deliveries} evidenced`,
+    evidencedOf: (evidenced, _n, deliveries) => `${evidenced} of ${deliveries} evidenced`,
     none: 'No Deliveries through the chain in the period.',
     mostMissing: (evidence) => `Most often missing: ${evidence}.`,
     allEvidenced: 'No evidence is missing.',

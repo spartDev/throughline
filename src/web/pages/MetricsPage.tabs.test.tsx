@@ -1,8 +1,8 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MetricsResponse } from '../../shared/api';
 import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
-import { agentChainFixture, metricsFixture, plain, stubChartWidth, stubMetricsApi, warmUpMetricsPages } from '../metrics/testing';
+import { agentChainFixture, heldDecisionsFixture, metricsFixture, plain, spokenText, stubChartWidth, stubMetricsApi, warmUpMetricsPages } from '../metrics/testing';
 import { bdeskIssues, mpmIssues, projectsResponse } from '../test/fixtures';
 import { renderApp } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
@@ -68,6 +68,15 @@ describe('sans Statut de relais : pas d’onglets', () => {
 
     expect(sections()).toEqual(BEFORE_TABS);
     expect(screen.queryByRole('tablist')).toBeNull();
+  });
+
+  it('un onglet inconnu dans l’adresse n’y fait rien dire : sans onglets, la page ne lit pas l’onglet, comme avant eux', async () => {
+    api(metricsFixture({ projects: ONE_PROJECT }));
+    await loaded('/p/bdesk/metrics?tab=chaine');
+
+    expect(sections()).toEqual(BEFORE_TABS);
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryAllByRole('status').map((notice) => plain(notice.textContent))).toEqual([]);
   });
 });
 
@@ -167,26 +176,57 @@ describe('avec les Statuts de relais : les onglets Décisions et Flux', () => {
     expect(within(clocks).getByRole('region', { name: 'Carte des Décisions' })).toBeTruthy();
   });
 
-  it('donne à chaque mesure de l’onglet son aide', async () => {
+  it('donne à chaque mesure de l’onglet son aide, la Carte d’activité comprise : toutes les tuiles et les cartes du panneau, lues sur la page', async () => {
     api(agentChainFixture({ projects: ONE_PROJECT }));
     await loaded('/p/bdesk/metrics');
 
-    for (const name of [
-      'Décisions tenues par semaine',
-      'Décisions tenues',
-      'Décisions par sens',
-      'Renoncements',
-      'Attente humaine',
-      'Livraisons prouvées',
-      'Livraisons sans Feu vert',
-      'Coût d’attention',
-      'Coût d’attention par semaine',
-      'Avec Intention écrite',
-      'Sans Intention écrite',
-      'Carte des Décisions',
-    ]) {
-      expect(within(panel()).getByRole('button', { name: `À propos de ${name}` })).toBeTruthy();
-    }
+    // Chaque tuile et chaque carte titre sa mesure d'un intertitre de niveau 3 (les sections, de niveau 2) : une mesure ajoutée entre d'elle-même dans la liste.
+    // Le compte (8 tuiles et 5 cartes) garde le test de passer à vide si ces intertitres changeaient de niveau.
+    const measures = within(panel())
+      .getAllByRole('heading', { level: 3 })
+      .map((heading) => heading.textContent ?? '');
+    expect(measures).toHaveLength(13);
+    expect(measures).toContain('Carte d’activité');
+    expect(measures.filter((name) => within(panel()).queryByRole('button', { name: `À propos de ${name}` }) === null)).toEqual([]);
+  });
+
+  it('accorde au singulier et à zéro : un Feu vert tenu, aucun Refus tenu, une seule Livraison prouvée', async () => {
+    const base = heldDecisionsFixture();
+    api(
+      agentChainFixture({
+        projects: ONE_PROJECT,
+        decisions: {
+          ...base,
+          total: 2,
+          greenLights: { total: 1, held: 1, contradicted: 0 },
+          rejections: { total: 1, held: 0, contradicted: 1 },
+          reruns: 0,
+          evidencedDeliveries: {
+            ...base.evidencedDeliveries,
+            deliveries: 1,
+            evidenced: 1,
+            share: 1,
+            missing: { writtenIntent: 0, reviewRound: 0, integration: 0, greenLight: 0 },
+            mostMissing: null,
+            withoutGreenLight: [],
+          },
+        },
+      }),
+    );
+    await loaded('/p/bdesk/metrics');
+
+    expect(within(tile('Décisions tenues')).getByText('Feux verts : 1 tenu sur 1')).toBeTruthy();
+    expect(within(tile('Décisions tenues')).getByText('Refus : 0 tenu sur 1')).toBeTruthy();
+    expect(within(tile('Livraisons prouvées')).getByText('1 sur 1 prouvée')).toBeTruthy();
+  });
+
+  it('la barre de la semaine en cours accorde ses Décisions tenues provisoires au singulier', async () => {
+    api(agentChainFixture({ projects: ONE_PROJECT }));
+    await loaded('/p/bdesk/metrics');
+
+    // La semaine en cours de la fixture a un Feu vert, tenu.
+    const weekly = within(panel()).getByRole('region', { name: 'Décisions tenues par semaine' });
+    expect(plain(spokenText(weekly))).toContain('Semaine du 2 nov. – 8 nov. 2026 : 1 tenu, provisoire : rien ne l’a encore démenti');
   });
 
   it('le Flux est tout le reste de la page, Chaîne d’agents comprise, sans l’Attente humaine', async () => {
@@ -295,6 +335,26 @@ describe('les onglets au clavier et pour les lecteurs d’écran (motif « ongle
     await user.tab();
     expect(document.activeElement).toBe(panel());
   });
+
+  it('laisse au navigateur les flèches, Origine et Fin pressées avec Alt, Cmd ou Ctrl : Alt+← et Cmd+← reviennent à la page précédente', async () => {
+    api(agentChainFixture({ projects: ONE_PROJECT }));
+    const { router } = await loaded('/p/bdesk/metrics');
+
+    act(() => tab('Décisions').focus());
+    for (const shortcut of [
+      { key: 'ArrowLeft', altKey: true },
+      { key: 'ArrowRight', metaKey: true },
+      { key: 'End', ctrlKey: true },
+      { key: 'Home', altKey: true },
+    ]) {
+      // `fireEvent` rend `false` quand un gestionnaire a annulé la touche.
+      expect(fireEvent.keyDown(tab('Décisions'), shortcut), JSON.stringify(shortcut)).toBe(true);
+      // Un changement d'onglet passerait par l'adresse : on lui laisse le temps de se faire.
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      expect(pathname(router)).toBe('/p/bdesk/metrics');
+      expect(document.activeElement).toBe(tab('Décisions'));
+    }
+  });
 });
 
 describe('en anglais', () => {
@@ -314,5 +374,8 @@ describe('en anglais', () => {
     }
     expect(within(panel()).getByRole('region', { name: 'Deliveries without green light' })).toBeTruthy();
     expect(within(panel()).getByRole('region', { name: 'Decision map' })).toBeTruthy();
+    expect(plain(spokenText(within(panel()).getByRole('region', { name: 'Held decisions per week' })))).toContain(
+      'Week of Nov 2 – Nov 8, 2026: 1 held, provisional: nothing has contradicted it yet',
+    );
   });
 });
