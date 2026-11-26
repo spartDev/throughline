@@ -142,3 +142,5 @@ L'orchestrateur (la session principale) mène chaque ticket de feature ou de bug
 5. `in_integration` : PR, CI, rebase. Puis `awaiting_human` : feu vert et merge par l'utilisateur ; l'orchestrateur ferme le ticket au merge.
 
 Écarts assumés à pstack : pas de `/no-comments` (ce dépôt documente son code en français) ; bacs à sable `sandbox.sh` plutôt que worktrees (`bd` y resterait joignable) ; tickets qui touchent les mêmes fichiers en série, la PR suivante empilée sur la précédente.
+
+PR empilées : dès que la PR de base est mergée, retargeter la suivante sur `main` (`gh pr edit <n> --base main`) avant de la merger. Sinon elle se merge dans la branche de base, déjà intégrée, et n'atteint jamais `main` (PR #28, rattrapée par #29).
