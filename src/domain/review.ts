@@ -85,7 +85,8 @@ interface Delivered {
 
 /**
  * Les mesures de relecture de la période demandée, sur l'union des tickets des Projets (la Vue globale, ou un seul Projet). L'Acceptation au premier passage
- * est aussi mesurée sur la période précédente, à durée écoulée égale (de son début à `previousAsOf`), pour sa tendance.
+ * est aussi mesurée sur la période précédente, à durée écoulée égale (de son début à `previousAsOf`), pour sa tendance, qui dit si celle-là est
+ * significative, par le même seuil.
  */
 export function computeReview(projects: MetricsInput[], { period, now, timeZone }: MetricsOptions): MetricsReview {
   const resolved = resolvePeriod(period, now.getTime(), timeZone);
@@ -109,7 +110,7 @@ export function computeReview(projects: MetricsInput[], { period, now, timeZone 
       ...acceptance,
       significant: reviewed.length >= MIN_REVIEWED_DELIVERIES,
       minReviewed: MIN_REVIEWED_DELIVERIES,
-      trend: trend(acceptance.rate, acceptanceOf(before).rate),
+      trend: { ...trend(acceptance.rate, acceptanceOf(before).rate), previousSignificant: before.length >= MIN_REVIEWED_DELIVERIES },
     },
     roundsPerDelivery: { one: rounds(1, 1), two: rounds(2, 2), three: rounds(3, 3), fourOrMore: rounds(4) },
     failureRate: {

@@ -42,6 +42,10 @@ function ticket(id: string, statuses: [string, number][], extra: Partial<Metrics
 const delivered = (id: string, middle: string[], extra: Partial<MetricsTicket> = {}) =>
   ticket(id, [['open', ago(6)], ...middle.map((status, i): [string, number] => [status, ago(5) + i * 3_600_000]), ['closed', ago(1)]], extra);
 
+/** Une Livraison fermée il y a `days` jours, dont les statuts intermédiaires se suivent d'heure en heure à partir de deux jours plus tôt. */
+const closedAgo = (id: string, days: number, middle: string[]) =>
+  ticket(id, [['open', ago(days + 3)], ...middle.map((status, i): [string, number] => [status, ago(days + 2) + i * 3_600_000]), ['closed', ago(days)]]);
+
 const project = (tickets: MetricsTicket[], declared: DeclaredStatuses = NO_DECLARED_STATUSES, id = 'p'): MetricsInput => ({
   id,
   name: `Projet ${id}`,
@@ -136,7 +140,7 @@ describe('mesures de relecture de la période', () => {
       handedOff: 0,
       reviewed: 0,
       coverage: null,
-      firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: { previous: null, delta: null, ratio: null } },
+      firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: { previous: null, delta: null, ratio: null, previousSignificant: false } },
       roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
       failureRate: expect.objectContaining({
         reviewed: { deliveries: 0, failed: 0, rate: null },
@@ -306,14 +310,11 @@ describe('mesures de relecture de la période', () => {
       rate: (n - 1) / n,
       significant,
       minReviewed: 10,
-      trend: { previous: null, delta: null, ratio: null },
+      trend: { previous: null, delta: null, ratio: null, previousSignificant: false },
     });
   });
 
   it('la tendance de l’Acceptation au premier passage (bdesk-pz0.8) : la période précédente, comptée jusqu’à l’instant qui correspond à maintenant', () => {
-    /** Une Livraison fermée il y a `days` jours, dont les statuts intermédiaires se suivent d'heure en heure à partir de deux jours plus tôt. */
-    const closedAgo = (id: string, days: number, middle: string[]) =>
-      ticket(id, [['open', ago(days + 3)], ...middle.map((status, i): [string, number] => [status, ago(days + 2) + i * 3_600_000]), ['closed', ago(days)]]);
     const accepted = ['in_progress', 'in_review'];
     const sentBack = ['in_progress', 'in_review', 'in_progress', 'in_review'];
     // La période court du samedi 17 octobre (minuit à Paris) à maintenant, vendredi 23 à 18:00Z ; la précédente du samedi 10, comptée jusqu'au
@@ -334,9 +335,19 @@ describe('mesures de relecture de la période', () => {
     expect(firstPassAcceptance.trend.ratio).toBeCloseTo(-0.25);
   });
 
+  it.each([
+    [MIN_REVIEWED_DELIVERIES - 1, false],
+    [MIN_REVIEWED_DELIVERIES, true],
+  ])('la tendance dit si la période précédente est significative, par le même seuil : %i Livraisons relues, %s', (n, previousSignificant) => {
+    // Il y a 9 jours, dans la période précédente, avant l'instant qui correspond à maintenant ; toutes acceptées, comme la Livraison de la période.
+    const before = Array.from({ length: n }, (_, i) => closedAgo(`avant${i}`, 9, ['in_progress', 'in_review']));
+    const { firstPassAcceptance } = reviewIn([project([delivered('relue', ['in_progress', 'in_review']), ...before])]);
+    expect(firstPassAcceptance.trend).toEqual({ previous: 1, delta: 0, ratio: 0, previousSignificant });
+  });
+
   it('sans Livraison relue sur la période précédente, la tendance n’a rien à comparer', () => {
     const { firstPassAcceptance } = reviewIn([project([delivered('relue', ['in_progress', 'in_review'])])]);
-    expect(firstPassAcceptance.trend).toEqual({ previous: null, delta: null, ratio: null });
+    expect(firstPassAcceptance.trend).toEqual({ previous: null, delta: null, ratio: null, previousSignificant: false });
   });
 
   it('les Livraisons passées par un Statut de relais (bdesk-pz0.8) : n’importe lequel, avant une Réouverture comprise ; ni le travail à la main ni un ticket ouvert', () => {

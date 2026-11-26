@@ -980,9 +980,10 @@ export interface MetricsReview {
     minReviewed: number;
     /**
      * `rate` comparé à celui de la période précédente (bdesk-pz0.8), à durée écoulée égale comme les tuiles : ses Livraisons relues de
-     * [`previousPeriod.start`, `previousAsOf`). `previous` est null sans Livraison relue sur cette fenêtre-là.
+     * [`previousPeriod.start`, `previousAsOf`). `previous` est null sans Livraison relue sur cette fenêtre-là. `previousSignificant` est faux quand
+     * elle en compte moins de `minReviewed` : le taux d'avant ne dit rien, et la tendance ne fonde pas de verdict.
      */
-    trend: MetricsTrend;
+    trend: MetricsTrend & { previousSignificant: boolean };
   };
   /** Tours par Livraison : les Livraisons relues selon leur nombre de Tours de relecture. La somme vaut `reviewed`. */
   roundsPerDelivery: { one: number; two: number; three: number; fourOrMore: number };

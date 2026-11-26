@@ -71,6 +71,15 @@ export function trendOf(current: number | null, previous: number | null): Metric
   return { previous, delta, ratio: previous === 0 ? null : delta / previous };
 }
 
+/**
+ * La tendance de l'Acceptation au premier passage (`MetricsReview.firstPassAcceptance.trend`) : celle de `trendOf`, et si la période précédente compte assez de
+ * Livraisons relues pour être significative ; par défaut, oui dès qu'elle a un taux.
+ */
+export const acceptanceTrendOf = (current: number | null, previous: number | null, previousSignificant = previous !== null) => ({
+  ...trendOf(current, previous),
+  previousSignificant,
+});
+
 function durationTile(median: number | null, p85: number | null, n: number, before: [number | null, number | null]): MetricsDurationTile {
   return { median, p85, n, trend: { median: trendOf(median, before[0]), p85: trendOf(p85, before[1]) } };
 }
@@ -259,7 +268,7 @@ export function reviewFixture(deliveries = 0, significance: MetricsSignificance 
     handedOff: 0,
     reviewed: 0,
     coverage: deliveries === 0 ? null : 0,
-    firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: noTrend },
+    firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, null) },
     roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
     failureRate: { ...significance, reviewed: { deliveries: 0, failed: 0, rate: null }, unreviewed: { deliveries, failed: 0, rate: deliveries === 0 ? null : 0 } },
     sendBacks: { review: 0, integration: 0, validation: 0 },
@@ -458,7 +467,7 @@ export function agentChainFixture(overrides: Partial<MetricsResponse> = {}): Met
       handedOff: 14,
       reviewed: 12,
       coverage: 12 / 18,
-      firstPassAcceptance: { accepted: 9, reviewed: 12, rate: 0.75, significant: true, minReviewed: 10, trend: trendOf(0.75, 0.6) },
+      firstPassAcceptance: { accepted: 9, reviewed: 12, rate: 0.75, significant: true, minReviewed: 10, trend: acceptanceTrendOf(0.75, 0.6) },
       roundsPerDelivery: { one: 9, two: 2, three: 0, fourOrMore: 1 },
       failureRate: { ...LOW_COVERAGE, reviewed: { deliveries: 12, failed: 0, rate: 0 }, unreviewed: { deliveries: 6, failed: 0, rate: 0 } },
       sendBacks: { review: 4, integration: 1, validation: 1 },

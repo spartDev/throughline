@@ -13,6 +13,8 @@ const fr = {
     /** Sous la valeur : les Livraisons relues sans aucun Retour, sur toutes les Livraisons relues. */
     acceptedOf: (accepted: string, reviewed: string) => `${accepted} sur ${reviewed} sans Retour`,
     fewReviewed: (reviewed: string, minimum: string) => `Trop peu de Livraisons relues pour conclure : ${reviewed} (minimum ${minimum}).`,
+    /** À la place de la tendance, quand la période précédente a des Livraisons relues, mais trop peu pour que son taux dise quelque chose. */
+    previousNotSignificant: (minimum: string) => `Période précédente non significative : moins de ${minimum} Livraisons relues.`,
     noReviewed: 'Aucune Livraison relue sur la période.',
     reviewCoverage: 'Couverture de relecture',
     /** L'accord se fait avec les Livraisons relues (`n`) : « 1 sur 18 relue », « 12 sur 18 relues ». */
@@ -85,6 +87,7 @@ const en: typeof fr = {
     reviewedDeliveries: (n, count) => `${count} ${n === 1 ? 'Reviewed delivery' : 'Reviewed deliveries'}`,
     acceptedOf: (accepted, reviewed) => `${accepted} of ${reviewed} with no Send-back`,
     fewReviewed: (reviewed, minimum) => `Too few Reviewed deliveries to conclude: ${reviewed} (minimum ${minimum}).`,
+    previousNotSignificant: (minimum) => `Previous period not significant: fewer than ${minimum} Reviewed deliveries.`,
     noReviewed: 'No Reviewed deliveries in the period.',
     reviewCoverage: 'Review coverage',
     reviewedOf: (reviewed, _n, deliveries) => `${reviewed} of ${deliveries} reviewed`,

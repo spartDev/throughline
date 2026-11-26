@@ -88,7 +88,8 @@ function indicators({ tiles, health }: NamedMetricsResponse, language: Language)
 
 /**
  * La Chaîne d'agents (bdesk-pz0.8), comme la page la montre : seulement si une Livraison de la période est passée par un Statut de relais. L'Acceptation au
- * premier passage avec son évolution, comme les indicateurs, et l'Attente humaine, que l'API ne compare pas à la période précédente.
+ * premier passage avec son évolution, comme les indicateurs, sauf face à une période précédente non significative, et l'Attente humaine, que l'API ne compare
+ * pas à la période précédente.
  */
 function agentChain({ review, cycleTimeBreakdown }: NamedMetricsResponse, language: Language): string[] {
   if (review.handedOff === 0) return [];
@@ -102,12 +103,14 @@ function agentChain({ review, cycleTimeBreakdown }: NamedMetricsResponse, langua
     rate === null
       ? DASH
       : `${acceptance.format(rate)} (${texts.outOf(formatCount(accepted), counted(language, reviewed, texts.reviewedDeliveries))})${significant ? '' : texts.notSignificant}`;
+  // Une période précédente sous le seuil a un taux, mais il ne dit rien : la colonne le dit, et l'évolution n'en tire pas de verdict.
+  const previousValue = `${previousOf(trend, acceptance)}${trend.previous === null || trend.previousSignificant ? '' : texts.notSignificant}`;
   const lines = [
     `## ${catalog.agentChain.heading}`,
     '',
     row([texts.indicator, texts.period, texts.previous, texts.evolution]),
     row(['---', '---:', '---:', '---']),
-    row([catalog.agentChain.firstPassAcceptance, acceptanceValue, previousOf(trend, acceptance), rate === null ? DASH : evolution(trend, acceptance)]),
+    row([catalog.agentChain.firstPassAcceptance, acceptanceValue, previousValue, rate === null || !trend.previousSignificant ? DASH : evolution(trend, acceptance)]),
     row([texts.humanWaitMedian, duration.format(stats.median ?? Number.NaN), DASH, DASH]),
     row([texts.humanWaitP85, duration.format(stats.p85 ?? Number.NaN), DASH, DASH]),
   ];

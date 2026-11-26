@@ -6,7 +6,7 @@ import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import { TooltipProvider } from '../ui/Tip';
 import { AGENT_CHAIN_GRID, AGENT_CHAIN_SPANS, AgentChainSection } from './AgentChain';
 import { describeComparison } from './comparison';
-import { agentChainFixture, ENOUGH_COVERAGE, plain, shownText, spokenText, trendOf } from './testing';
+import { acceptanceTrendOf, agentChainFixture, ENOUGH_COVERAGE, plain, shownText, spokenText } from './testing';
 
 /**
  * La Chaîne d'agents (bdesk-pz0.8). Fixture (`agentChainFixture`) : 18 Livraisons, 14 passées par la chaîne, 12 relues dont 9 sans Retour (75 %, contre 60 %
@@ -95,12 +95,22 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
     });
 
     it('une baisse est une mauvaise tendance', () => {
-      renderSection(withReview({ firstPassAcceptance: { ...agentChainFixture().review.firstPassAcceptance, trend: trendOf(0.75, 0.9) } }));
+      renderSection(withReview({ firstPassAcceptance: { ...agentChainFixture().review.firstPassAcceptance, trend: acceptanceTrendOf(0.75, 0.9) } }));
       expect(trends(tile('Acceptation au premier passage'))).toEqual([['down', 'bad']]);
     });
 
+    it('face à une période précédente sous 10 Livraisons relues : pas de tendance, et la tuile dit pourquoi', () => {
+      // La période précédente n'a qu'une Livraison relue, acceptée : 100 % sur 1 contre 75 % sur 12 ne fait pas une baisse de 25 points.
+      renderSection(withReview({ firstPassAcceptance: { ...agentChainFixture().review.firstPassAcceptance, trend: acceptanceTrendOf(0.75, 1, false) } }));
+
+      const acceptance = tile('Acceptation au premier passage');
+      expect(acceptance.querySelector('[data-trend]')).toBeNull();
+      expect(shown(acceptance)).toContain('Période précédente non significative : moins de 10 Livraisons relues.');
+      expect(heard(acceptance)).not.toMatch(/baisse|100 %/);
+    });
+
     it('sous 10 Livraisons relues : non significative, avec le motif et le taux observé en retrait, sans tendance', () => {
-      renderSection(withReview({ reviewed: 3, firstPassAcceptance: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false, minReviewed: 10, trend: trendOf(2 / 3, 0.5) } }));
+      renderSection(withReview({ reviewed: 3, firstPassAcceptance: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false, minReviewed: 10, trend: acceptanceTrendOf(2 / 3, 0.5) } }));
 
       const acceptance = tile('Acceptation au premier passage');
       expect(acceptance.hasAttribute('data-indicative')).toBe(true);
@@ -116,7 +126,7 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
         withReview({
           reviewed: 0,
           coverage: 0,
-          firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: trendOf(null, 0.5) },
+          firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: acceptanceTrendOf(null, 0.5) },
           roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
         }),
       );
@@ -139,9 +149,23 @@ describe('AgentChainSection : la Chaîne d’agents', () => {
 
     const rounds = within(tile('Tours par Livraison')).getByRole('list', { name: 'Livraisons relues selon leur nombre de Tours de relecture' });
     const rows = within(rounds).getAllByRole('listitem');
-    expect(rows.map(shown)).toEqual(['1 Tour975 %', '2 Tours217 %', '3 Tours00 %', '4 Tours ou plus18,3 %']);
+    expect(rows.map(shown)).toEqual(['1 Tour975 %', '2 Tours216,7 %', '3 Tours00 %', '4 Tours ou plus18,3 %']);
     expect(heard(rows[0]!)).toBe('1 Tour9 Livraisons75 %');
     expect(heard(rows[3]!)).toBe('4 Tours ou plus1 Livraison8,3 %');
+  });
+
+  it('Tours par Livraison : une part s’écrit comme l’Acceptation au premier passage, à une décimale', () => {
+    // 11 Livraisons relues : 10 acceptées en un Tour, une renvoyée en deux Tours. Les 10 sur 11 sont la même part dans les deux tuiles.
+    renderSection(
+      withReview({
+        reviewed: 11,
+        firstPassAcceptance: { ...agentChainFixture().review.firstPassAcceptance, accepted: 10, reviewed: 11, rate: 10 / 11 },
+        roundsPerDelivery: { one: 10, two: 1, three: 0, fourOrMore: 0 },
+      }),
+    );
+
+    expect(shown(tile('Acceptation au premier passage').querySelector('[data-value]')!)).toBe('90,9 %');
+    expect(within(tile('Tours par Livraison')).getAllByRole('listitem').map(shown)).toEqual(['1 Tour1090,9 %', '2 Tours19,1 %', '3 Tours00 %', '4 Tours ou plus00 %']);
   });
 
   it('Retours par origine : leur nombre, puis chaque Statut de relais quitté, zéros compris', () => {

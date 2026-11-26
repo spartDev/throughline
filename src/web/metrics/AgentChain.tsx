@@ -66,7 +66,8 @@ export function AgentChainSection({ review, breakdown, comparison }: { review: M
 
 /**
  * L'Acceptation au premier passage : la part des Livraisons relues sans aucun Retour, avec sa tendance. Sous 10 Livraisons relues, elle ne dit rien : la
- * tuile le dit, avec le motif, garde le taux observé en retrait et n'avance pas de tendance, comme le Taux d'échec.
+ * tuile le dit, avec le motif, garde le taux observé en retrait et n'avance pas de tendance, comme le Taux d'échec. Celle de la période précédente non
+ * plus : sous ce seuil, la tuile le dit à la place de la tendance.
  */
 function FirstPassAcceptanceTile({ review, comparison, className }: { review: MetricsReview; comparison: Comparison; className: string }) {
   const t = useT();
@@ -96,7 +97,11 @@ function FirstPassAcceptanceTile({ review, comparison, className }: { review: Me
   return (
     <Tile {...frame}>
       <Value caption={texts.acceptedOf(formatCount(accepted), formatCount(reviewed))}>{formatPercent(rate, { precise: true })}</Value>
-      <Trend trend={trend} measure={MEASURES[language].acceptance} comparison={comparison} />
+      {trend.previous === null || trend.previousSignificant ? (
+        <Trend trend={trend} measure={MEASURES[language].acceptance} comparison={comparison} />
+      ) : (
+        <p className="text-micro text-ink-3">{texts.previousNotSignificant(formatCount(minReviewed))}</p>
+      )}
     </Tile>
   );
 }
@@ -244,8 +249,8 @@ export function HumanWaitTile({ breakdown, className }: { breakdown: MetricsCycl
 }
 
 /**
- * Des comptes en lignes : un libellé, le nombre, et sa part de `total` s'il est donné. L'écran n'écrit que le nombre ; les lecteurs d'écran entendent ce qu'il
- * compte (`noun`) : « 1 Tour, 8 Livraisons, 67 % ».
+ * Des comptes en lignes : un libellé, le nombre, et sa part de `total` s'il est donné, à une décimale comme les autres parts de la section. L'écran
+ * n'écrit que le nombre ; les lecteurs d'écran entendent ce qu'il compte (`noun`) : « 1 Tour, 8 Livraisons, 66,7 % ».
  */
 function CountList({
   label,
@@ -268,7 +273,7 @@ function CountList({
             {formatCount(row.count)}
             <span className="sr-only"> {noun(row.count)}</span>
           </span>
-          {total === undefined ? null : <span className="tnum w-12 shrink-0 text-right text-micro text-ink-3">{formatPercent(row.count / total)}</span>}
+          {total === undefined ? null : <span className="tnum w-12 shrink-0 text-right text-micro text-ink-3">{formatPercent(row.count / total, { precise: true })}</span>}
         </li>
       ))}
     </ul>
