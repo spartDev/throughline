@@ -1,8 +1,9 @@
 import { Eye, Keyboard, LayoutGrid, RefreshCw, Search, TriangleAlert } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
+import { projectReasonText } from '../data/apiError';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
-import { useT } from '../i18n';
+import { useLanguage, useT } from '../i18n';
 import { APP_NAME } from '../lib/appName';
 import { cx } from '../lib/cx';
 import { useRetryFocus } from '../lib/useRetryFocus';
@@ -165,10 +166,12 @@ function ProjectItem({
   section: ReturnType<typeof useRouteInfo>['section'];
 }) {
   const t = useT();
+  const { language } = useLanguage();
   if (project.status !== 'ok') {
+    const reason = projectReasonText(project, language);
     return (
       <li>
-        <div title={project.reason} className="flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-side-ink-3">
+        <div title={reason} className="flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-side-ink-3">
           <ProjectTile project={project} className="mt-0.5" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
@@ -178,7 +181,7 @@ function ProjectItem({
             </div>
             <p className="line-clamp-2 wrap-anywhere text-micro">
               <span className="sr-only">{t.shell.common.unreadableBecause}</span>
-              {project.reason ?? t.shell.common.unreadable}
+              {reason ?? t.shell.common.unreadable}
             </p>
           </div>
         </div>

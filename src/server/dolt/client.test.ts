@@ -1030,3 +1030,125 @@ describe('entiers de Dolt (bdesk-38k.44)', () => {
     expect(() => parseDoltInteger({}, 'priority')).toThrow(DoltQueryError);
   });
 });
+
+/**
+ * bdesk-ewr.8 : chaque erreur que le client écrit lui-même porte sa cause codée (`reasonDetail`), d'où l'interface écrit la raison d'un Projet illisible dans
+ * sa langue ; son message, la raison française, reste celui d'avant. Le texte de Dolt (sa sortie d'erreur) n'a pas de cause : le client vérifié le remplace.
+ */
+describe.skipIf(process.platform === 'win32')('la cause codée des erreurs du client', () => {
+  const failure = async (binary: string, dir: string, sql = 'select 1', extra: Record<string, unknown> = {}) =>
+    createDoltClient({ ...options(binary), ...extra }).open(dir).query(sql).catch((e: unknown) => e);
+
+  it('un délai dépassé : le délai et le dossier', async () => {
+    const fake = fakeDolt('sleep 5');
+
+    const error = await failure(fake.binary, fake.dir, 'select 1', { timeoutMs: 100 });
+
+    expect(error).toMatchObject({ message: `Délai dépassé (100 ms) pour lire ${fake.dir}`, reasonDetail: { code: 'timeout', params: { ms: 100, path: fake.dir } } });
+  });
+
+  it('une sortie trop volumineuse : la limite, en octets, et le dossier', async () => {
+    const fake = fakeDolt(`head -c 5000 /dev/zero | tr '\\0' 'x'; sleep 5`);
+
+    const error = await failure(fake.binary, fake.dir, 'select 1', { maxOutputBytes: 1000 });
+
+    expect(error).toMatchObject({
+      message: `Sortie de dolt trop volumineuse (plus de 1000 octets) pour lire ${fake.dir}`,
+      reasonDetail: { code: 'output-too-large', params: { bytes: 1000, path: fake.dir } },
+    });
+  });
+
+  it('un dossier de base introuvable, un binaire absent', async () => {
+    const fake = fakeDolt(`echo '{"rows": []}'`);
+    const absent = join(fake.dir, 'absent');
+
+    expect(await failure(fake.binary, absent)).toMatchObject({
+      message: `Dossier introuvable : ${absent}`,
+      reasonDetail: { code: 'folder-not-found', params: { path: absent } },
+    });
+    expect(await failure('/nonexistent/dolt', tmpdir())).toMatchObject({
+      message: "Le binaire « /nonexistent/dolt » est introuvable : installez Dolt et vérifiez qu'il est dans le PATH.",
+      reasonDetail: { code: 'dolt-not-found', params: { binary: '/nonexistent/dolt' } },
+    });
+  });
+
+  it('dolt qui s’arrête sans rien dire : le code de sortie, ou le signal', async () => {
+    const exited = fakeDolt('exit 3');
+    const killed = fakeDolt('kill -9 $$');
+
+    expect(await failure(exited.binary, exited.dir)).toMatchObject({
+      message: "dolt a échoué (code de sortie 3) sans message d'erreur",
+      reasonDetail: { code: 'dolt-exit-code', params: { code: '3' } },
+    });
+    expect(await failure(killed.binary, killed.dir)).toMatchObject({
+      message: "dolt a été interrompu (SIGKILL) sans message d'erreur",
+      reasonDetail: { code: 'dolt-interrupted', params: { signal: 'SIGKILL' } },
+    });
+  });
+
+  it('une requête qui contient un octet nul ; un binaire qui ne se lance pas', async () => {
+    const fake = fakeDolt(`echo '{"rows": []}'`);
+
+    expect(await failure(fake.binary, fake.dir, "select 'a\u0000b'")).toMatchObject({
+      message: `Impossible de lancer « ${fake.binary} » : la requête contient un octet nul, que le client n’envoie pas à dolt.`,
+      reasonDetail: { code: 'null-byte', params: { binary: fake.binary } },
+    });
+    const refused = await failure('/usr/bin/do\u0000lt', tmpdir());
+    expect(refused).toMatchObject({ reasonDetail: { code: 'launch-failed', params: { binary: '/usr/bin/do\u0000lt' } } });
+    const message = (refused as Error).message;
+    expect(message.startsWith('Impossible de lancer « /usr/bin/do\u0000lt » : ')).toBe(true);
+    expect(message.endsWith('.')).toBe(true);
+    expect(message).not.toContain('inconnue'); // la cause est le code de l'erreur de Node
+  });
+
+  it('un lancement sans code d’erreur : « cause inconnue », la raison que le client a toujours écrite', () => {
+    const error = new DoltQueryError({ code: 'launch-failed', params: { binary: 'dolt', cause: '' } }, tmpdir());
+
+    expect(error.message).toBe('Impossible de lancer « dolt » : cause inconnue.');
+  });
+
+  it('une file pleine : sa borne', async () => {
+    const fake = fakeDolt(`sleep 0.3; echo '{"rows": []}'`);
+    const db = createDoltClient({ ...options(fake.binary), maxConcurrent: 1, maxQueued: 1 }).open(fake.dir);
+
+    const results = await Promise.allSettled([db.query('select 0'), db.query('select 1'), db.query('select 2')]);
+
+    expect(results[2]).toMatchObject({
+      status: 'rejected',
+      reason: { message: 'Trop de lectures Dolt en attente (plus de 1) : réessayez dans un instant.', reasonDetail: { code: 'queue-full', params: { max: 1 } } },
+    });
+  });
+
+  it('une date ou un entier illisibles : la valeur, et la colonne de l’entier (entre guillemets pour un texte)', () => {
+    const thrown = (read: () => unknown) => {
+      try {
+        read();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    };
+
+    expect(thrown(() => parseDoltDate('pas une date'))).toMatchObject({
+      message: 'Date Dolt invalide : pas une date',
+      reasonDetail: { code: 'invalid-date', params: { value: 'pas une date' } },
+    });
+    expect(thrown(() => parseDoltInteger('haute', 'priority'))).toMatchObject({
+      message: 'Entier Dolt invalide (priority) : « haute »',
+      reasonDetail: { code: 'invalid-integer-text', params: { column: 'priority', value: 'haute' } },
+    });
+    expect(thrown(() => parseDoltInteger({ a: [1] }, 'restart'))).toMatchObject({
+      message: 'Entier Dolt invalide (restart) : {"a":[1]}',
+      reasonDetail: { code: 'invalid-integer', params: { column: 'restart', value: '{"a":[1]}' } },
+    });
+  });
+
+  it('le texte de Dolt n’a pas de cause codée : il ne part jamais tel quel (le client vérifié le remplace)', async () => {
+    const fake = fakeDolt(`echo 'quelque chose a échoué' >&2; exit 1`);
+
+    const error = await failure(fake.binary, fake.dir);
+
+    expect(error).toBeInstanceOf(DoltQueryError);
+    expect(error).not.toHaveProperty('reasonDetail');
+  });
+});

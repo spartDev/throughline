@@ -219,7 +219,12 @@ describe.skipIf(!hasBinary('dolt'))('métriques sur de vraies bases Dolt', () =>
     expect(status).toBe(200);
     expect(body.projects.map((p) => p.id)).toEqual(['alpha', 'beta']);
     expect(body.unreadable).toEqual([
-      { id: 'absent', name: 'absent', reason: expect.stringContaining('mode server') },
+      {
+        id: 'absent',
+        name: 'absent',
+        reason: expect.stringContaining('mode server'),
+        reasonDetail: { code: 'database-not-local', params: expect.objectContaining({ folder: expect.any(String) }) },
+      },
     ]);
     expect(body.tiles.throughput.total).toBe(6); // 4 chez alpha, 2 chez beta
     // Union : 1 2 4 4 7 7 jours → médiane entre les deux 4 j, P85 entre deux 7 j ; la moyenne des médianes des Projets (3 j et 5,5 j) ferait 4,25 j

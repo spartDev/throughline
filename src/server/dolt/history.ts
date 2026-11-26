@@ -1,6 +1,7 @@
 import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
 import type { DeclaredStatuses } from '../../shared/api';
+import type { StoredSqlPlace } from '../../shared/errors';
 import { type DoltDatabase, DoltQueryError, parseDoltDate, parseDoltInteger, queryAll, type Row, sqlIdent, sqlString } from './client';
 import { ascendingDates } from './commit-dates';
 import { asText, AT_HEAD, CLOSURE_LABELS_SQL, CUSTOM_STATUSES_SQL, TARGET_COLUMNS, toDeclaredStatuses, toDependency, toLabelRecords } from './reader';
@@ -272,9 +273,9 @@ async function dependencyColumns(db: DoltDatabase, source: string, era?: { revis
   const redirected = era ? ((await db.storedSqlAt?.(era.anchor)) ?? []) : [];
   if (redirected.length > 0) throw new StoredSqlError(redirected, db.dir);
   // L'époque se dit par son commit (huit caractères), non par le nom de la base de révision, qui porte le hash entier.
-  const label = era ? `époque du commit ${era.anchor.slice(0, 8)}` : 'historique des dépendances';
+  const place: StoredSqlPlace = era ? { in: 'era', commit: era.anchor.slice(0, 8) } : { in: 'dependencies-history' };
   const [shown = [], tables = []] = await queryAll(db, [`show columns from ${source}`, ...(era ? [revisionTablesSql(era.revision)] : [])]);
-  const problems = storedSqlInSource(shown, tables, label);
+  const problems = storedSqlInSource(shown, tables, place);
   if (problems.length > 0) throw new StoredSqlError(problems, db.dir);
   const existing = new Set(shown.map((row) => asText(row.Field)));
   const columns = ['commit_hash', 'issue_id', 'type', ...TARGET_COLUMNS].filter((column) => existing.has(column)).map(sqlIdent);

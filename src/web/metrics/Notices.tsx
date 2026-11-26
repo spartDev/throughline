@@ -1,6 +1,7 @@
 import { Info, TriangleAlert } from 'lucide-react';
 import { useId } from 'react';
 import type { MetricsUnreadableProject } from '../../shared/api';
+import { projectReasonText } from '../data/apiError';
 import { projectLabel } from '../data/projectNames';
 import type { Written } from '../data/types';
 import { useFormat, useLanguage, useT } from '../i18n';
@@ -52,6 +53,7 @@ export function ZoneNotice({ asked, counted }: { asked: string; counted: string 
 export function UnreadableProjects({ projects }: { projects: readonly Written<MetricsUnreadableProject>[] }) {
   const titleId = useId();
   const t = useT();
+  const { language } = useLanguage();
   const { formatCount } = useFormat();
   const texts = t.metrics.notices;
   return (
@@ -68,7 +70,7 @@ export function UnreadableProjects({ projects }: { projects: readonly Written<Me
                 <ProjectName project={project} among={projects} />
               </strong>
               {texts.reasonSeparator}
-              {project.reason}
+              {projectReasonText(project, language)}
             </li>
           ))}
         </ul>

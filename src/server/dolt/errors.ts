@@ -2,13 +2,26 @@
  * Les erreurs du lecteur Dolt. Elles vivent à part pour que `read-only.ts` puisse en dériver (`ReadOnlyViolation`)
  * sans import circulaire, `client.ts` important `read-only.ts` : les autres modules les importent de `client.ts`,
  * qui les ré-exporte.
+ *
+ * Une erreur que le client écrit lui-même porte sa cause codée (`reasonDetail`, bdesk-ewr.8) : son message est la raison française de cette cause
+ * (`projectReason`), et l'une et l'autre deviennent la raison d'un Projet illisible. Le texte de Dolt (`DoltTextError`) n'en a pas.
  */
+import type { ProjectReasonDetail } from '../../shared/errors';
+import { projectReasonFr } from '../../shared/project-reasons';
+
+/** Le message d'une erreur : la raison française de sa cause, ou un texte que le client ne code pas. */
+const messageOf = (message: string | ProjectReasonDetail) => (typeof message === 'string' ? message : projectReasonFr(message));
+const detailOf = (message: string | ProjectReasonDetail) => (typeof message === 'string' ? undefined : message);
 
 /** Le binaire `dolt` n'est pas installé (ou pas dans le PATH). */
 export class DoltNotFoundError extends Error {
+  readonly reasonDetail: ProjectReasonDetail;
+
   constructor(binary: string) {
-    super(`Le binaire « ${binary} » est introuvable : installez Dolt et vérifiez qu'il est dans le PATH.`);
+    const detail: ProjectReasonDetail = { code: 'dolt-not-found', params: { binary } };
+    super(projectReasonFr(detail));
     this.name = 'DoltNotFoundError';
+    this.reasonDetail = detail;
   }
 }
 
@@ -20,9 +33,12 @@ export class DoltQueryError extends Error {
    * la base : la propriété n'est pas énumérable, ni le journal des erreurs ni une sérialisation ne les emportent, et le message ne les reprend jamais.
    */
   declare readonly completed?: readonly (readonly Record<string, unknown>[])[];
+  /** La cause codée, quand le message est celui d'une cause que le client écrit lui-même ; absente (pas même `undefined`) d'un message qu'il ne code pas. */
+  declare readonly reasonDetail?: ProjectReasonDetail;
 
   constructor(
-    message: string,
+    /** La cause codée (le message en est la raison française), ou un message que le client ne code pas. */
+    message: string | ProjectReasonDetail,
     /** Dossier de la base, quand l'erreur en vient. */
     readonly dir = '',
     readonly locked = false,
@@ -30,8 +46,10 @@ export class DoltQueryError extends Error {
     cause?: unknown,
     completed?: readonly (readonly Record<string, unknown>[])[],
   ) {
-    super(message, cause === undefined ? undefined : { cause });
+    super(messageOf(message), cause === undefined ? undefined : { cause });
     this.name = 'DoltQueryError';
+    const detail = detailOf(message);
+    if (detail !== undefined) Object.assign(this, { reasonDetail: detail });
     if (completed !== undefined) Object.defineProperty(this, 'completed', { value: completed, enumerable: false });
   }
 }
