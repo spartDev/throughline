@@ -7,6 +7,7 @@ import { beforeAll, vi } from 'vitest';
 import type {
   MetricsCycleTimeBreakdown,
   MetricsDecisions,
+  MetricsEvidencedDeliveries,
   MetricsLongTrend,
   MetricsLongTrendWeek,
   MetricsBucket,
@@ -336,9 +337,18 @@ export function longTrendFixture(
 
 /**
  * Les Décisions des fixtures (bdesk-3e9.3) : aucune, comme sur un Projet qui n'a pas À valider. Le Coût d'attention est indéfini, faute de Livraison passée
- * par la chaîne ; les semaines sont celles de la Tendance longue des fixtures, et la période, qui court, est provisoire.
+ * par la chaîne, comme la part des Livraisons prouvées (bdesk-3e9.5) ; les semaines sont celles de la Tendance longue des fixtures, et la période, qui court,
+ * est provisoire.
  */
 export function decisionsFixture(): MetricsDecisions {
+  const evidencedDeliveries: MetricsEvidencedDeliveries = {
+    deliveries: 0,
+    evidenced: 0,
+    share: null,
+    missing: { writtenIntent: 0, reviewRound: 0, integration: 0, greenLight: 0 },
+    mostMissing: null,
+    withoutGreenLight: [],
+  };
   const none = () => ({
     total: 0,
     greenLights: { total: 0, held: 0, contradicted: 0 },
@@ -348,7 +358,7 @@ export function decisionsFixture(): MetricsDecisions {
     attentionCost: { deliveries: 0, decisions: 0, perDelivery: null },
   });
   const weeks = longTrendFixture().weeks.map(({ from, to, start, end, partial }) => ({ from, to, start, end, partial, ...none() }));
-  return { ...none(), provisional: true, weeks };
+  return { ...none(), provisional: true, evidencedDeliveries, weeks };
 }
 
 /**

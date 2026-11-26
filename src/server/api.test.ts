@@ -571,6 +571,8 @@ describe('API des métriques', () => {
     expect(body.health.declines).toEqual({ total: 0, trend: { previous: 0, delta: 0, ratio: null } });
     // Décisions (bdesk-3e9.3) : un ajout au contrat ; un Projet qui n'a pas À valider n'en a aucune, et pas de Coût d'attention.
     expect(body.decisions).toMatchObject({ total: 0, reruns: 0, postponements: 0, attentionCost: { deliveries: 0, decisions: 0, perDelivery: null } });
+    // Livraisons prouvées (bdesk-3e9.5) : un ajout aux Décisions ; sans Livraison passée par la chaîne, pas de part.
+    expect(body.decisions.evidencedDeliveries).toMatchObject({ deliveries: 0, share: null, mostMissing: null, withoutGreenLight: [] });
     // Tendance longue (bdesk-l77.4) : les 12 semaines qui finissent par la semaine en cours, quelle que soit la période.
     expect(body.longTrend.minDeliveries).toBe(4);
     expect(body.longTrend.weeks.map((week) => week.from)).toHaveLength(12);
@@ -606,6 +608,47 @@ describe('API des métriques', () => {
     expect(body.decisions.weeks.at(-1)).toMatchObject({ from: '2026-10-19', partial: true, total: 4, attentionCost: { deliveries: 1, perDelivery: 2 } });
     // Le Report n'est pas une Prise rendue : rien de tout cela n'entre dans le Retravail, hormis la Réouverture du Refus.
     expect(body.health.rework.tickets.map(({ id, reopenings, returns }) => [id, reopenings, returns])).toEqual([['r', 1, 0]]);
+  });
+
+  it('GET /api/metrics sert les Livraisons prouvées de la période et ses Livraisons sans Feu vert (bdesk-3e9.5)', async () => {
+    const DAY = 86_400_000;
+    /** Des instantanés datés en jours avant maintenant, les critères d'acceptation renseignés dans chacun : une Intention écrite. */
+    const snapshots = (...statuses: [string, number][]) =>
+      statuses.map(([status, days]) => ({ status, at: new Date(NOW.getTime() - days * DAY), hasAcceptanceCriteria: true }));
+    const histories: TicketHistory[] = [
+      // Toute la chaîne : une Livraison prouvée.
+      {
+        id: 'prouvee',
+        type: 'task',
+        statusSnapshots: snapshots(['open', 6], ['in_progress', 5], ['in_review', 4], ['awaiting_human', 3], ['in_integration', 2], ['closed', 1]),
+        dependencies: [],
+      },
+      // Relue et intégrée, mais livrée sans passer À valider : sans Feu vert.
+      { id: 'sans-feu-vert', type: 'bug', statusSnapshots: snapshots(['open', 6], ['in_progress', 5], ['in_review', 4], ['in_integration', 3], ['closed', 2]), dependencies: [] },
+      // Faite à la main : hors du compte.
+      { id: 'main', type: 'task', statusSnapshots: snapshots(['open', 6], ['in_progress', 5], ['closed', 1]), dependencies: [] },
+    ];
+    const issues = histories.map((h): Issue => ({ ...issue, id: h.id, type: h.type, title: `Titre de ${h.id}` }));
+
+    const body = (await getMetrics('?range=7d', serviceWith({ histories: async () => histories, issues: async () => issues }))).json<MetricsResponse>();
+
+    expect(body.decisions.evidencedDeliveries).toEqual({
+      deliveries: 2,
+      evidenced: 1,
+      share: 0.5,
+      missing: { writtenIntent: 0, reviewRound: 0, integration: 0, greenLight: 1 },
+      mostMissing: 'greenLight',
+      withoutGreenLight: [
+        {
+          id: 'sans-feu-vert',
+          title: 'Titre de sans-feu-vert',
+          type: 'bug',
+          priority: 1,
+          project: 'beads-desktop',
+          deliveredAt: new Date(NOW.getTime() - 2 * DAY).toISOString(),
+        },
+      ],
+    });
   });
 
   it('GET /api/metrics donne la même Tendance longue quelle que soit la période choisie', async () => {
