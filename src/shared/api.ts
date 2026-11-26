@@ -1068,6 +1068,45 @@ export interface MetricsAttentionCost {
   perDelivery: number | null;
 }
 
+/** Une preuve d'une Livraison prouvée : son Intention écrite, un Tour de relecture, un passage En intégration, un Feu vert. */
+export type MetricsEvidence = 'writtenIntent' | 'reviewRound' | 'integration' | 'greenLight';
+
+/** Une Livraison sans Feu vert de la période, comme une ligne du Retravail. */
+export interface MetricsDeliveryWithoutGreenLight {
+  id: string;
+  title: string;
+  type: string;
+  priority: number;
+  /** L'identifiant de son Projet. */
+  project: string;
+  /** Sa Livraison : sa dernière clôture. */
+  deliveredAt: string;
+}
+
+/**
+ * Livraisons prouvées (bdesk-3e9.5) : parmi les Livraisons passées par la chaîne d'une fenêtre (au moins un Statut de relais depuis leur dernière Réouverture,
+ * ou leur création), datées de leur dernière clôture comme le Débit, celles qui réunissent les quatre preuves (`MetricsEvidence`) : l'Intention écrite, et sur
+ * ce même intervalle un Tour de relecture, un passage En intégration et un Feu vert. Le travail fait à la main hors chaîne n'y entre pas. Toutes les Livraisons
+ * passées par la chaîne comptent, que leur Projet ait À valider ou non : celles d'un Projet sans À valider ne peuvent recevoir aucun Feu vert.
+ */
+export interface MetricsEvidencedDeliveries {
+  /** Livraisons passées par la chaîne : le dénominateur. */
+  deliveries: number;
+  /** Parmi elles, les Livraisons prouvées. */
+  evidenced: number;
+  /** `evidenced / deliveries`, de 0 à 1 ; null sans Livraison passée par la chaîne. */
+  share: number | null;
+  /** Pour chaque preuve, le nombre de ces Livraisons auxquelles elle manque ; une Livraison peut en manquer plusieurs. */
+  missing: Record<MetricsEvidence, number>;
+  /**
+   * La preuve qui manque le plus souvent. À égalité, la première dans l'ordre où la chaîne les produit d'habitude : Intention écrite, Tour de relecture,
+   * passage En intégration, Feu vert. null quand aucune ne manque, faute de Livraison ou parce qu'elles sont toutes prouvées.
+   */
+  mostMissing: MetricsEvidence | null;
+  /** Les Livraisons sans Feu vert (`missing.greenLight`), de la plus récente à la plus ancienne, puis par Projet et par identifiant. */
+  withoutGreenLight: MetricsDeliveryWithoutGreenLight[];
+}
+
 /** Une semaine de la tendance des Décisions : les mêmes 12 semaines que la Tendance longue, la semaine en cours comptée jusqu'à `asOf`. */
 export interface MetricsDecisionsWeek extends MetricsDecisionTally, Pick<MetricsLongTrendWeek, 'from' | 'to' | 'start' | 'end' | 'partial'> {
   attentionCost: MetricsAttentionCost;
@@ -1075,7 +1114,8 @@ export interface MetricsDecisionsWeek extends MetricsDecisionTally, Pick<Metrics
 
 /**
  * Les Décisions de la période (bdesk-3e9.3) : celles que l'utilisateur a prises À valider, par sens, ce que l'historique dit des Feux verts et des Refus
- * (Décision tenue), le Coût d'attention, et les uns et les autres semaine par semaine sur 12 semaines. Tout se lit dans les Transitions, sans autre source.
+ * (Décision tenue), le Coût d'attention, et les uns et les autres semaine par semaine sur 12 semaines ; les Livraisons prouvées de la période (bdesk-3e9.5).
+ * Tout se lit dans les Transitions, et l'Intention écrite dans les critères d'acceptation de l'historique.
  */
 export interface MetricsDecisions extends MetricsDecisionTally {
   /**
@@ -1084,6 +1124,8 @@ export interface MetricsDecisions extends MetricsDecisionTally {
    */
   provisional: boolean;
   attentionCost: MetricsAttentionCost;
+  /** Les Livraisons prouvées de la période, et ses Livraisons sans Feu vert (bdesk-3e9.5) : sur la période seule, pas semaine par semaine. */
+  evidencedDeliveries: MetricsEvidencedDeliveries;
   /** Les 12 semaines qui finissent par la semaine en cours, quelle que soit la période, sans lissage. */
   weeks: MetricsDecisionsWeek[];
 }

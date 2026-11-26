@@ -357,7 +357,7 @@ _English_: Postponement
 _Avoid_: mise en attente
 
 **Livraison sans Feu vert**:
-Une Livraison passée par au moins un Statut de relais depuis sa dernière Réouverture (ou sa création), sans avoir reçu de Feu vert entre-temps. Le travail que l'utilisateur fait lui-même, sans passer par la chaîne, n'en produit jamais.
+Une Livraison passée par au moins un Statut de relais depuis sa dernière Réouverture (ou sa création), sans avoir reçu de Feu vert entre-temps. Le travail que l'utilisateur fait lui-même, sans passer par la chaîne, n'en produit jamais. Un Feu vert reçu avant la dernière Réouverture ne compte pas : il a laissé passer la Livraison rouverte. Seuls comptent les Projets qui ont À valider, déclaré ou porté par un ticket, comme pour le Coût d'attention : ailleurs, aucune Livraison ne peut recevoir de Feu vert, et la liste ne dirait que l'absence de porte humaine.
 _English_: Delivery without green light
 
 **Livraison saine**:
@@ -392,7 +392,7 @@ _English_: Held decision
 _Avoid_: bonne décision
 
 **Livraison prouvée**:
-Une Livraison passée par la chaîne (au moins un Statut de relais depuis sa dernière Réouverture ou sa création), qui est une Intention écrite et a connu sur ce même intervalle au moins un Tour de relecture, au moins un passage En intégration et un Feu vert. Aucune exception selon le type.
+Une Livraison passée par la chaîne (au moins un Statut de relais depuis sa dernière Réouverture ou sa création), qui est une Intention écrite et a connu sur ce même intervalle au moins un Tour de relecture, au moins un passage En intégration et un Feu vert. Aucune exception selon le type. Une Intention écrite que l'historique ne permet pas de lire (un schéma ou un commit d'avant la colonne des critères d'acceptation) manque : rien ne la prouve. Sur une période, la part des Livraisons prouvées se prend parmi les Livraisons passées par la chaîne des Projets qui ont À valider (comme le Coût d'attention), datées de leur dernière clôture comme le Débit, et la preuve qui leur manque le plus souvent se départage, à égalité, dans l'ordre où la chaîne les produit : Intention écrite, Tour de relecture, passage En intégration, Feu vert.
 _English_: Evidenced delivery
 _Avoid_: livraison validée, livraison conforme
 

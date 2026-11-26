@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { DeclaredStatuses, MetricsDecisionTally } from '../shared/api';
+import type { DeclaredStatuses, MetricsDecisionTally, MetricsEvidence } from '../shared/api';
 import type { PeriodSpec } from './calendar';
-import { computeDecisions, type Decision, decisionsOf, throughChain } from './decisions';
+import { computeDecisions, type Decision, decisionsOf, missingEvidence, throughChain } from './decisions';
 import type { DependencyHistory } from './flow';
 import { computeHealth } from './health';
 import { analyzeProject, type MetricsInput, type MetricsTicket } from './metrics';
@@ -323,5 +323,141 @@ describe('les 12 semaines', () => {
     });
     expect(weeks.at(-1)).toMatchObject({ ...NONE, total: 1, postponements: 1, attentionCost: { deliveries: 0, perDelivery: null } });
     expect(decisionsIn([project(tickets)], { range: '7d' }).weeks).toEqual(weeks);
+  });
+});
+
+/** Le même ticket, ses critères d'acceptation renseignés (true) ou vides (false) dans chacun de ses instantanés. */
+const withCriteria = (t: MetricsTicket, hasAcceptanceCriteria: boolean): MetricsTicket => ({
+  ...t,
+  statusSnapshots: t.statusSnapshots.map((snapshot) => ({ ...snapshot, hasAcceptanceCriteria })),
+});
+/** Une Intention écrite : ses critères d'acceptation sont renseignés dès son premier démarrage. */
+const intended = (t: MetricsTicket) => withCriteria(t, true);
+
+/** Ce qui manque à chaque Livraison du Projet (`missingEvidence`), par identifiant ; null pour celle qui n'est pas passée par la chaîne. */
+function missingOf(tickets: MetricsTicket[], declared: DeclaredStatuses = DECLARED): Record<string, MetricsEvidence[] | null> {
+  const { analysis } = project(tickets, declared);
+  return Object.fromEntries(analysis.tickets.filter((t) => t.deliveredAt !== null).map((t) => [t.id, missingEvidence(t.timeline.steps, t, declared)]));
+}
+
+/** Toute la chaîne : démarré, relu, validé vers En intégration, livré. */
+const CHAIN = ['open', 'in_progress', 'in_review', 'awaiting_human', 'in_integration', 'closed'];
+/** Relu et intégré, sans jamais passer À valider. */
+const UNGATED = ['open', 'in_progress', 'in_review', 'in_integration', 'closed'];
+
+describe('Livraison prouvée et Livraison sans Feu vert', () => {
+  it('une chaîne complète, avec une Intention écrite : une Livraison prouvée', () => {
+    expect(missingOf([intended(daily('t', CHAIN))]).t).toEqual([]);
+    // Validée après l'intégration, d'un Feu vert vers la clôture : prouvée de même.
+    expect(missingOf([intended(daily('t', ['open', 'in_progress', 'in_review', 'in_integration', 'awaiting_human', 'closed']))]).t).toEqual([]);
+    // Créée En relecture : sa création est un Tour de relecture, et son premier démarrage.
+    expect(missingOf([intended(daily('t', ['in_review', 'awaiting_human', 'in_integration', 'closed']))]).t).toEqual([]);
+  });
+
+  it.each<[string, MetricsTicket, MetricsEvidence[]]>([
+    ['sans Intention écrite : critères vides au premier démarrage', withCriteria(daily('t', CHAIN), false), ['writtenIntent']],
+    ['sans Intention écrite lisible : l’historique ne dit pas ses critères, rien ne la prouve', daily('t', CHAIN), ['writtenIntent']],
+    ['sans Tour de relecture', intended(daily('t', ['open', 'in_progress', 'awaiting_human', 'in_integration', 'closed'])), ['reviewRound']],
+    ['sans passage En intégration', intended(daily('t', ['open', 'in_progress', 'in_review', 'awaiting_human', 'closed'])), ['integration']],
+    ['sans Feu vert : jamais passée À valider', intended(daily('t', UNGATED)), ['greenLight']],
+    ['sans Feu vert : relancée depuis À valider, puis fermée sans y revenir', intended(daily('t', [...UNGATED.slice(0, -1), 'awaiting_human', 'in_progress', 'closed'])), ['greenLight']],
+    [
+      'sans rien d’autre qu’un passage À valider, reporté',
+      daily('t', ['open', 'in_progress', 'awaiting_human', 'open', 'in_progress', 'closed']),
+      ['writtenIntent', 'reviewRound', 'integration', 'greenLight'],
+    ],
+  ])('%s', (_case, delivered, missing) => {
+    expect(missingOf([delivered]).t).toEqual(missing);
+  });
+
+  it('un Feu vert reçu avant une Réouverture ne prouve pas la Livraison qui suit : sans nouveau Feu vert, elle est sans Feu vert', () => {
+    const reopened = intended(daily('t', [...CHAIN, 'in_progress', 'in_review', 'in_integration', 'closed']));
+
+    expect(missingOf([reopened]).t).toEqual(['greenLight']);
+    expect(decisionsIn([project([reopened])]).evidencedDeliveries.withoutGreenLight.map(({ id }) => id)).toEqual(['t']);
+    // Le Tour de relecture et le passage En intégration se lisent de même depuis la dernière Réouverture.
+    expect(missingOf([intended(daily('t', [...CHAIN, 'in_progress', 'awaiting_human', 'closed']))]).t).toEqual(['reviewRound', 'integration']);
+    // Rouverte droit En relecture : cette Transition est un Tour de relecture de la nouvelle Livraison.
+    expect(missingOf([intended(daily('t', ['open', 'in_progress', 'closed', 'in_review', 'awaiting_human', 'in_integration', 'closed']))]).t).toEqual([]);
+  });
+
+  it('le travail fait à la main, hors chaîne, n’est ni prouvé ni sans Feu vert', () => {
+    const tickets = [
+      intended(daily('main', ['open', 'in_progress', 'closed'])),
+      // Passée par la chaîne et validée avant sa Réouverture, reprise à la main depuis.
+      intended(daily('reprise', [...CHAIN, 'in_progress', 'closed'])),
+    ];
+
+    expect(missingOf(tickets)).toEqual({ main: null, reprise: null });
+    expect(decisionsIn([project(tickets)]).evidencedDeliveries).toEqual({
+      deliveries: 0,
+      evidenced: 0,
+      share: null,
+      missing: { writtenIntent: 0, reviewRound: 0, integration: 0, greenLight: 0 },
+      mostMissing: null,
+      withoutGreenLight: [],
+    });
+  });
+
+  it('par période : la part des Livraisons prouvées parmi celles passées par la chaîne, ce qui leur manque, et les Livraisons sans Feu vert', () => {
+    const tickets = [
+      intended(daily('prouvee', CHAIN, 1)),
+      // Validée il y a 10 jours, avant la période, livrée dedans : prouvée, à la période de sa dernière clôture.
+      intended(
+        ticket('ancienne', [['open', ago(12)], ['in_progress', ago(11)], ['in_review', ago(10.5)], ['awaiting_human', ago(10)], ['in_integration', ago(9)], ['closed', ago(1)]]),
+      ),
+      intended(daily('sans-relecture', ['open', 'in_progress', 'awaiting_human', 'in_integration', 'closed'], 3)),
+      intended(daily('sans-feu-vert', UNGATED, 2)),
+      // Relue seulement, sans critères lisibles : il lui manque l'Intention écrite, l'intégration et le Feu vert.
+      daily('relue', ['open', 'in_progress', 'in_review', 'closed'], 4),
+      // Faite à la main : hors du compte.
+      intended(daily('main', ['open', 'in_progress', 'closed'])),
+      // Livrée il y a 9 jours, avant la période : ni dans le compte, ni dans la liste.
+      intended(daily('avant', UNGATED, 9)),
+      // Refusée au bout de la chaîne, ou encore en cours : pas des Livraisons.
+      intended(daily('refus', ['open', 'in_progress', 'in_review', 'awaiting_human', 'closed'], 1, { labels: ['declined'] })),
+      intended(daily('en-cours', ['open', 'in_progress', 'in_review'])),
+    ];
+
+    expect(decisionsIn([project(tickets)]).evidencedDeliveries).toEqual({
+      deliveries: 5,
+      evidenced: 2,
+      share: 2 / 5,
+      missing: { writtenIntent: 1, reviewRound: 1, integration: 1, greenLight: 2 },
+      mostMissing: 'greenLight',
+      // De la plus récente à la plus ancienne.
+      withoutGreenLight: [
+        { id: 'sans-feu-vert', title: 'Titre de sans-feu-vert', type: 'task', priority: 2, project: 'p', deliveredAt: new Date(ago(2)).toISOString() },
+        { id: 'relue', title: 'Titre de relue', type: 'task', priority: 2, project: 'p', deliveredAt: new Date(ago(4)).toISOString() },
+      ],
+    });
+  });
+
+  it('l’élément manquant le plus fréquent : à égalité, le premier dans l’ordre de la chaîne ; aucun quand rien ne manque', () => {
+    const tie = [intended(daily('sans-feu-vert', UNGATED)), intended(daily('sans-integration', ['open', 'in_progress', 'in_review', 'awaiting_human', 'closed']))];
+
+    expect(decisionsIn([project(tie)]).evidencedDeliveries).toMatchObject({
+      missing: { writtenIntent: 0, reviewRound: 0, integration: 1, greenLight: 1 },
+      mostMissing: 'integration',
+    });
+    expect(decisionsIn([project([intended(daily('prouvee', CHAIN))])]).evidencedDeliveries).toMatchObject({
+      deliveries: 1,
+      evidenced: 1,
+      share: 1,
+      mostMissing: null,
+      withoutGreenLight: [],
+    });
+  });
+
+  it('dans la Vue globale, seules comptent les Livraisons des Projets qui ont À valider, comme pour le Coût d’attention', () => {
+    const gated = project([intended(daily('a', CHAIN, 2)), intended(daily('b', UNGATED, 1))], DECLARED, 'gated');
+    const ungated = project([intended(daily('u', UNGATED, 1))], WITHOUT_GATE, 'ungated');
+
+    const { evidencedDeliveries, attentionCost } = decisionsIn([ungated, gated]);
+    // La Livraison du Projet sans À valider, qui ne pouvait recevoir aucun Feu vert, n'entre ni dans la part ni dans la liste.
+    expect(evidencedDeliveries).toMatchObject({ deliveries: 2, evidenced: 1, share: 1 / 2, mostMissing: 'greenLight' });
+    expect(evidencedDeliveries.withoutGreenLight.map(({ project, id }) => [project, id])).toEqual([['gated', 'b']]);
+    // Le Coût d'attention compte les mêmes Livraisons.
+    expect(attentionCost.deliveries).toBe(2);
   });
 });
