@@ -20,6 +20,7 @@ import type {
   MetricsTrend,
   MetricsWipTile,
 } from '../shared/api';
+import { type Closure, closureOf } from './abandon';
 import { addDays, type BucketSpan, bucketsOf, daysOf, type Period, type PeriodSpec, resolvePeriod, startOfDay } from './calendar';
 import { type Column, COLUMNS, columnsOf, HANDOFF_COLUMNS } from './columns';
 import { analyzeFailures } from './failures';
@@ -83,6 +84,12 @@ export interface TrackedTicket {
   abandonCause: AbandonCause | null;
   /** Date du Renoncement (dernière clôture, avec le label `declined` au Dernier commit) ; null si le ticket n'en est pas un. */
   declinedAt: number | null;
+  /**
+   * Ce qu'est chacune de ses clôtures, qu'il soit fermé aujourd'hui ou non : la règle de clôture (`closureOf`) appliquée à ses liens et à ses labels du
+   * Dernier commit, celle qui fait de sa dernière clôture une Livraison, un Abandon ou un Renoncement. Une Décision qui le ferme est un Feu vert ou un Refus
+   * selon elle, même suivie d'une Réouverture (`decisionsOf`).
+   */
+  closesAs: Closure['kind'];
   /** Part du Cycle Time passée en Blocage, pour une Livraison. */
   blockedTime: number | null;
   /** Attente de dépendance (Backlog avant le premier démarrage), pour une Livraison. */
@@ -184,6 +191,7 @@ export function analyzeProject(tickets: MetricsTicket[], declared: DeclaredStatu
         abandonedAt: flow.outcome.kind === 'abandoned' ? flow.outcome.at.getTime() : null,
         abandonCause: flow.outcome.kind === 'abandoned' ? flow.outcome.cause : null,
         declinedAt: flow.outcome.kind === 'declined' ? flow.outcome.at.getTime() : null,
+        closesAs: closureOf(ticket.dependencies, ticket.labels ?? []).kind,
         blockedTime: deliveredAt === null ? null : flow.blockedTime,
         dependencyWait: deliveredAt === null ? null : flow.dependencyWait,
         timeline: buildTimeline(ticket, steps, stepsById, declared),

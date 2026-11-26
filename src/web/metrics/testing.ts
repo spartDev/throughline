@@ -6,6 +6,7 @@
 import { beforeAll, vi } from 'vitest';
 import type {
   MetricsCycleTimeBreakdown,
+  MetricsDecisions,
   MetricsLongTrend,
   MetricsLongTrendWeek,
   MetricsBucket,
@@ -334,6 +335,23 @@ export function longTrendFixture(
 }
 
 /**
+ * Les Décisions des fixtures (bdesk-3e9.3) : aucune, comme sur un Projet qui n'a pas À valider. Le Coût d'attention est indéfini, faute de Livraison passée
+ * par la chaîne ; les semaines sont celles de la Tendance longue des fixtures, et la période, qui court, est provisoire.
+ */
+export function decisionsFixture(): MetricsDecisions {
+  const none = () => ({
+    total: 0,
+    greenLights: { total: 0, held: 0, contradicted: 0 },
+    rejections: { total: 0, held: 0, contradicted: 0 },
+    reruns: 0,
+    postponements: 0,
+    attentionCost: { deliveries: 0, decisions: 0, perDelivery: null },
+  });
+  const weeks = longTrendFixture().weeks.map(({ from, to, start, end, partial }) => ({ from, to, start, end, partial, ...none() }));
+  return { ...none(), provisional: true, weeks };
+}
+
+/**
  * La réponse d'une Vue globale dont les Projets mesurés sont `projects` (bdesk-38k.65, revue). Le serveur la compose ainsi (`slicesOf`, `domain/metrics.ts`) : le découpage par Projet a une ligne par
  * Projet mesuré, et son libellé est le nom du Projet, écrit une deuxième fois à côté de `projects`. Les chiffres sont ceux de la première ligne de `metricsFixture`, pour chacune : seuls les noms
  * et les identifiants comptent ici. `overrides` remplace des morceaux entiers, comme pour `metricsFixture`.
@@ -412,6 +430,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
     review: reviewFixture(18),
     cycleTimeBreakdown: cycleTimeBreakdownFixture(18, 28.5 * DAY, 2.5 * DAY),
     longTrend: longTrendFixture(),
+    decisions: decisionsFixture(),
     ...overrides,
   };
 }

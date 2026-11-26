@@ -554,8 +554,8 @@ describe('API des métriques', () => {
     expect(body.cfd).toHaveLength(30);
     expect(Object.keys(body).sort()).toEqual(
       [
-        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeBreakdown', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf', 'previousPeriod',
-        'projects', 'range', 'review', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
+        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeBreakdown', 'cycleTimeScatter', 'decisions', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf',
+        'previousPeriod', 'projects', 'range', 'review', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
       ].sort(),
     );
     // Mesures de relecture (bdesk-pz0.5) : un ajout au contrat, à côté du rapport ; un Projet sans Statut de relais n'a aucune Livraison relue.
@@ -569,10 +569,43 @@ describe('API des métriques', () => {
     expect(body.health.rework).toEqual({ tickets: [] });
     // Renoncements (ADR 0008) : un ajout aussi, leur nombre dans la période et sa tendance.
     expect(body.health.declines).toEqual({ total: 0, trend: { previous: 0, delta: 0, ratio: null } });
+    // Décisions (bdesk-3e9.3) : un ajout au contrat ; un Projet qui n'a pas À valider n'en a aucune, et pas de Coût d'attention.
+    expect(body.decisions).toMatchObject({ total: 0, reruns: 0, postponements: 0, attentionCost: { deliveries: 0, decisions: 0, perDelivery: null } });
     // Tendance longue (bdesk-l77.4) : les 12 semaines qui finissent par la semaine en cours, quelle que soit la période.
     expect(body.longTrend.minDeliveries).toBe(4);
     expect(body.longTrend.weeks.map((week) => week.from)).toHaveLength(12);
     expect(body.longTrend.weeks.at(-1)).toMatchObject({ from: '2026-10-19', to: '2026-10-25', partial: true });
+  });
+
+  it('GET /api/metrics sert les Décisions de la période, leur répartition par sens, les Décisions tenues et le Coût d’attention (bdesk-3e9.3)', async () => {
+    const DAY = 86_400_000;
+    const snapshots = (...statuses: [string, number][]) => statuses.map(([status, days]) => ({ status, at: new Date(NOW.getTime() - days * DAY) }));
+    const histories: TicketHistory[] = [
+      // Relancé, puis Feu vert : deux Décisions pour une Livraison passée par la chaîne.
+      { id: 'a', type: 'task', statusSnapshots: snapshots(['open', 6], ['in_review', 5], ['awaiting_human', 4], ['in_progress', 3], ['awaiting_human', 2], ['closed', 1]), dependencies: [] },
+      // Refusé, puis rouvert : un Refus démenti.
+      { id: 'r', type: 'task', statusSnapshots: snapshots(['open', 6], ['awaiting_human', 4], ['closed', 3], ['open', 2]), dependencies: [], labels: ['declined'] },
+      // Reporté : remis à ouvert depuis À valider.
+      { id: 'p', type: 'task', statusSnapshots: snapshots(['open', 6], ['in_progress', 5], ['awaiting_human', 4], ['open', 3]), dependencies: [] },
+    ];
+    const issues = histories.map((h): Issue => ({ ...issue, id: h.id, title: `Titre de ${h.id}` }));
+
+    const body = (await getMetrics('?range=7d', serviceWith({ histories: async () => histories, issues: async () => issues }))).json<MetricsResponse>();
+
+    expect(body.decisions).toMatchObject({
+      total: 4,
+      greenLights: { total: 1, held: 1, contradicted: 0 },
+      rejections: { total: 1, held: 0, contradicted: 1 },
+      reruns: 1,
+      postponements: 1,
+      provisional: true,
+      attentionCost: { deliveries: 1, decisions: 2, perDelivery: 2 },
+    });
+    expect(body.decisions.weeks).toHaveLength(12);
+    // Toutes datées depuis le lundi 19 octobre : la semaine en cours les porte toutes.
+    expect(body.decisions.weeks.at(-1)).toMatchObject({ from: '2026-10-19', partial: true, total: 4, attentionCost: { deliveries: 1, perDelivery: 2 } });
+    // Le Report n'est pas une Prise rendue : rien de tout cela n'entre dans le Retravail, hormis la Réouverture du Refus.
+    expect(body.health.rework.tickets.map(({ id, reopenings, returns }) => [id, reopenings, returns])).toEqual([['r', 1, 0]]);
   });
 
   it('GET /api/metrics donne la même Tendance longue quelle que soit la période choisie', async () => {

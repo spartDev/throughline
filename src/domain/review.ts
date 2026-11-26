@@ -36,9 +36,9 @@ export interface TicketReview {
 /**
  * Le statut vers lequel un Retour mène : en cours, rattaché à un agent, ou un autre statut que le Projet déclare de catégorie `wip` (il compte comme en
  * cours, ADR 0007). Un Statut de relais n'en est pas un : passer d'En intégration à En relecture n'est pas un Retour, mais un nouveau Tour. Ni bloqué, ni
- * ouvert (une Prise rendue ou un Report), ni fermé.
+ * ouvert (une Prise rendue ou un Report), ni fermé. Depuis À valider, c'est aussi une Relance (`decisionsOf`).
  */
-const isDevelopment = (status: string, declared: DeclaredStatuses): boolean =>
+export const isDevelopment = (status: string, declared: DeclaredStatuses): boolean =>
   status === 'in_progress' || status === 'hooked' || isDeclaredWip(status, declared);
 
 /**

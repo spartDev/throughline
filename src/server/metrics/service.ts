@@ -1,5 +1,6 @@
 import { type PeriodSpec, resolvePeriod } from '../../domain/calendar';
 import { computeCycleTimeBreakdown } from '../../domain/cycleTimeBreakdown';
+import { computeDecisions } from '../../domain/decisions';
 import { computeHealth } from '../../domain/health';
 import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
@@ -266,6 +267,7 @@ export function createMetricsService(
         review: computeReview(measured, { period, now: at, timeZone: zone }),
         cycleTimeBreakdown: computeCycleTimeBreakdown(measured, { period, now: at, timeZone: zone }),
         longTrend: longTrendOf(measured, { now: at, timeZone: zone }),
+        decisions: computeDecisions(measured, { period, now: at, timeZone: zone }),
       };
     },
   };
