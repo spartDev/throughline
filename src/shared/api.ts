@@ -1086,11 +1086,11 @@ export interface MetricsDeliveryWithoutGreenLight {
 /**
  * Livraisons prouvées (bdesk-3e9.5) : parmi les Livraisons passées par la chaîne d'une fenêtre (au moins un Statut de relais depuis leur dernière Réouverture,
  * ou leur création), datées de leur dernière clôture comme le Débit, celles qui réunissent les quatre preuves (`MetricsEvidence`) : l'Intention écrite, et sur
- * ce même intervalle un Tour de relecture, un passage En intégration et un Feu vert. Le travail fait à la main hors chaîne n'y entre pas. Toutes les Livraisons
- * passées par la chaîne comptent, que leur Projet ait À valider ou non : celles d'un Projet sans À valider ne peuvent recevoir aucun Feu vert.
+ * ce même intervalle un Tour de relecture, un passage En intégration et un Feu vert. Le travail fait à la main hors chaîne n'y entre pas. Seuls comptent les
+ * Projets qui ont À valider, comme pour le Coût d'attention : ailleurs, aucune Livraison ne peut recevoir de Feu vert.
  */
 export interface MetricsEvidencedDeliveries {
-  /** Livraisons passées par la chaîne : le dénominateur. */
+  /** Livraisons passées par la chaîne des Projets qui ont À valider : le dénominateur, les mêmes que celles du Coût d'attention. */
   deliveries: number;
   /** Parmi elles, les Livraisons prouvées. */
   evidenced: number;
