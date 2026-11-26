@@ -1,11 +1,11 @@
-import type { MetricsActivity } from '../../shared/api';
+import type { MetricsWeekHourMap } from '../../shared/api';
 import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
 
 /**
  * Carte d'activité : l'API donne les Transitions de la période par jour de la semaine (le lundi d'abord, comme les tranches
  * hebdomadaires) et par heure du fuseau de la réponse (celui que la page a demandé : le sien). La page en tire le niveau de couleur
- * de chaque case, le pic, et les totaux du tableau.
+ * de chaque case, le pic, et les totaux du tableau. La Carte des Décisions (bdesk-3e9.7) se lit de la même façon, sur la même grille.
  */
 
 /** Les jours de la semaine, du lundi au dimanche : le nom en toutes lettres et son abréviation. */
@@ -44,7 +44,7 @@ export interface ActivityView {
   empty: boolean;
 }
 
-export function describeActivity({ cells: grid, total }: MetricsActivity): ActivityView {
+export function describeActivity({ cells: grid, total }: MetricsWeekHourMap): ActivityView {
   const max = Math.max(0, ...grid.flat());
   const cells: ActivityCell[] = [];
   const byWeekday = new Array<number>(7).fill(0);

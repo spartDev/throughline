@@ -151,6 +151,17 @@ function measuresIn(language: Language) {
       negligible: (delta) => Math.abs(delta) < 0.5,
       showRatio: false,
     },
+    /** Un nombre de tickets sans bon ni mauvais sens (les Renoncements : décider de ne pas faire n'est ni un progrès ni un recul). */
+    tally: {
+      language,
+      polarity: 'neutral',
+      format: formatCount,
+      formatDelta: (delta) => formatSigned(delta),
+      speak: formatCount,
+      speakDelta: formatCount,
+      negligible: (delta) => Math.abs(delta) < 0.5,
+      showRatio: true,
+    },
     /** Un nombre de tickets dont moins, c'est mieux (les Prêts qui stagnent). */
     fewer: {
       language,

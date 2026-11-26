@@ -199,6 +199,16 @@ function ThroughputTile({ tile, comparison, className }: { tile: MetricsTiles['t
   );
 }
 
+/** Une mesure provisoire, parce que la période court : un sablier et la phrase qui dit pourquoi. Le Débit sain et les Décisions tenues (bdesk-3e9.7) la portent. */
+export function Provisional({ children }: { children: string }) {
+  return (
+    <p data-provisional="" className="flex items-start gap-1.5 text-micro leading-4 text-ink-2">
+      <Hourglass size={12} aria-hidden="true" className="mt-0.5 shrink-0 text-ink-3" />
+      {children}
+    </p>
+  );
+}
+
 /**
  * Le Débit sain, à côté du Débit : les Livraisons saines de la période, et leur écart avec le Débit (les Livraisons revenues). Comme le Taux d'échec, il ne
  * vaut que si la Couverture des bugs est assez haute : sinon la tuile le dit, avec le motif, garde le nombre observé en retrait et n'avance pas de tendance.
@@ -211,12 +221,7 @@ function SoundThroughputTile({ tile, comparison, className }: { tile: MetricsSou
   const { language } = useLanguage();
   const texts = t.metrics.tiles;
   const help = t.metrics.metricHelp.soundThroughput;
-  const provisional = tile.provisional && tile.deliveries > 0 ? (
-    <p data-provisional="" className="flex items-start gap-1.5 text-micro leading-4 text-ink-2">
-      <Hourglass size={12} aria-hidden="true" className="mt-0.5 shrink-0 text-ink-3" />
-      {texts.provisional}
-    </p>
-  ) : null;
+  const provisional = tile.provisional && tile.deliveries > 0 ? <Provisional>{texts.provisional}</Provisional> : null;
 
   if (!tile.significant) {
     // Le motif est écrit dans la langue de l'interface à partir des codes de l'API, comme celui du Taux d'échec : c'est le même.

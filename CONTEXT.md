@@ -208,6 +208,10 @@ _Avoid_: ticket oublié, ticket périmé
 Nombre de Transitions d'une période selon le jour de la semaine (du lundi au dimanche) et l'heure, dans le fuseau de l'utilisateur. La création d'un ticket n'en est pas une : c'est une Arrivée.
 _English_: Activity map
 
+**Carte des Décisions**:
+Nombre de Décisions d'une période selon le jour de la semaine et l'heure du mur, dans le fuseau de l'utilisateur : la grille de la Carte d'activité, comptée de la même façon, mais seulement des Décisions. Chacune se lit à son échelle (le niveau d'une case est relatif au maximum de sa carte) : à côté de la Carte d'activité, elle dit quand vous décidez, l'autre quand le travail avance.
+_English_: Decision map
+
 **Parcours d'un ticket**:
 Le dessin, en tête des métriques, de ce qui entre (les Arrivées), des trois états qu'un ticket traverse (Backlog, Prêt, En cours) et de ce qui sort (les Livraisons). C'est un fil : la longueur de chaque tronçon est la part du Lead Time cumulé qui s'y passe (celles de la Décomposition du Lead Time), le tube est vide là où le ticket attend et plein là où l'on y travaille. Le Lead Time y embrasse tout le fil, le Cycle Time le seul tronçon En cours.
 _English_: Ticket journey
@@ -297,7 +301,7 @@ Une Livraison qui a connu au moins un Tour de relecture avant sa dernière clôt
 _English_: Reviewed delivery
 
 **Acceptation au premier passage**:
-Part des Livraisons relues d'une période qui n'ont subi aucun Retour avant leur dernière clôture. Non significative sous 10 Livraisons relues.
+Part des Livraisons relues d'une période qui n'ont subi aucun Retour avant leur dernière clôture. Non significative sous 10 Livraisons relues. Elle se découpe aussi selon l'Intention écrite : avec, et sans (une Livraison dont on ne sait pas si elle en avait une compte sans), chaque partie soumise au même seuil.
 _English_: First-pass acceptance
 _Avoid_: first-pass yield, taux de réussite
 
@@ -421,7 +425,7 @@ _Avoid_: objectif, output, critères d'acceptation
 - Une **Epic** a des **Enfants** ; son **Avancement** = **Livraisons** parmi ses **Enfants à livrer**
 - La **Prévision de fin** d'une **Epic** se tire de son **Débit récent**
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
-- Les jours des périodes, l'**Âge calendaire** et la **Carte d'activité** se comptent dans le **Fuseau de l'utilisateur**, pas dans celui du serveur
+- Les jours des périodes, l'**Âge calendaire**, la **Carte d'activité** et la **Carte des Décisions** se comptent dans le **Fuseau de l'utilisateur**, pas dans celui du serveur
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**
 - Le kanban, le **Panneau de ticket**, les métriques et la **Chronologie** d'un **Projet** lisent le même **Dernier commit**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
@@ -432,6 +436,8 @@ _Avoid_: objectif, output, critères d'acceptation
 - Le **Débit sain** compte les **Livraisons saines** parmi les **Livraisons** du **Débit**
 - Une **Décision tenue** est un **Feu vert** ou un **Refus** que ni **Bug d'origine** ni **Réouverture** n'a démenti
 - Une **Livraison prouvée** réunit une **Intention écrite**, un **Tour de relecture**, un passage En intégration et un **Feu vert**
+- La **Carte des Décisions** range les **Décisions** de la période sur la grille de la **Carte d'activité**
+- Les métriques ont un onglet Décisions (les **Décisions tenues**, les **Livraisons prouvées**, le **Coût d'attention**, l'**Acceptation au premier passage** selon l'**Intention écrite**, l'**Attente humaine** et la **Carte des Décisions**) dès qu'un **Projet** de la vue a les **Statuts de relais**, déclarés ou portés ; sinon, elles n'ont que le Flux
 - Un **Renoncement** n'est ni une **Livraison** ni un **Abandon** ; fermé depuis À valider, c'est un **Refus**
 - Un **Report** depuis À valider n'est pas une **Prise rendue**, donc pas du **Retravail**
 - Une **Epic** peut porter un **Outcome visé** ; ses **Livraisons** et son **Avancement** ne disent pas s'il est atteint

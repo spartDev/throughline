@@ -461,3 +461,65 @@ describe('Livraison prouvée et Livraison sans Feu vert', () => {
     expect(attentionCost.deliveries).toBe(2);
   });
 });
+
+describe('Carte des Décisions (bdesk-3e9.7)', () => {
+  /** Les cases non vides d'une carte, `jour-heure` (0 pour le lundi) : leur compte. */
+  const filled = (cells: number[][]) =>
+    Object.fromEntries(cells.flatMap((hours, weekday) => hours.flatMap((count, hour) => (count === 0 ? [] : [[`${weekday}-${hour}`, count]]))));
+  const at = (iso: string) => Date.parse(`${iso}Z`);
+
+  it('range chaque Décision de la période au jour et à l’heure de sa Transition, dans le Fuseau de l’utilisateur', () => {
+    // Mardi 20 octobre 2026 à Paris (UTC+2) : une Relance à 07:15Z (9 h), un Feu vert à 21:40Z (23 h). Mercredi 21 à 23:10Z, c'est déjà jeudi 1 h à Paris.
+    const tickets = [
+      ticket('a', [
+        ['open', at('2026-10-19T08:00')],
+        ['awaiting_human', at('2026-10-20T06:00')],
+        ['in_progress', at('2026-10-20T07:15')],
+        ['awaiting_human', at('2026-10-20T20:00')],
+        ['closed', at('2026-10-20T21:40')],
+      ]),
+      ticket('b', [['open', at('2026-10-19T08:00')], ['awaiting_human', at('2026-10-21T20:00')], ['deferred', at('2026-10-21T23:10')]]),
+      // Une Transition qui n'est pas une Décision (l'entrée À valider, le démarrage) n'est pas sur la carte.
+      ticket('c', [['open', at('2026-10-19T08:00')], ['in_progress', at('2026-10-20T10:00')], ['awaiting_human', at('2026-10-20T11:00')]]),
+    ];
+
+    const decisions = decisionsIn([project(tickets)]);
+    expect(filled(decisions.decisionMap.cells)).toEqual({ '1-9': 1, '1-23': 1, '3-1': 1 });
+    expect(decisions.decisionMap.total).toBe(3);
+    // La carte range les Décisions de la période, ni plus ni moins.
+    expect(decisions.decisionMap.total).toBe(decisions.total);
+
+    // En UTC, les mêmes Décisions tombent ailleurs : la carte suit le fuseau demandé.
+    const utc = computeDecisions([project(tickets)], { period: { range: '7d' }, now: new Date(NOW), timeZone: 'UTC' });
+    expect(filled(utc.decisionMap.cells)).toEqual({ '1-7': 1, '1-21': 1, '2-23': 1 });
+  });
+
+  it('lit l’heure du mur au changement d’heure : 02:30 revient deux fois le dimanche 25 octobre, aux deux décalages', () => {
+    const now = new Date('2026-10-27T12:00:00Z');
+    const tickets = [
+      ticket('a', [
+        ['open', at('2026-10-24T10:00')],
+        ['awaiting_human', at('2026-10-25T00:00')],
+        ['in_progress', at('2026-10-25T00:30')], // 02:30 en heure d'été (UTC+2) : une Relance
+        ['awaiting_human', at('2026-10-25T01:00')],
+        ['in_review', at('2026-10-25T01:30')], // 02:30 en heure d'hiver (UTC+1) : une Relance
+        ['awaiting_human', at('2026-10-25T02:00')],
+        ['closed', at('2026-10-25T02:30')], // 03:30 : un Feu vert
+      ]),
+    ];
+
+    const { decisionMap, total } = computeDecisions([project(tickets)], { period: { from: '2026-10-24', to: '2026-10-26' }, now, timeZone: PARIS });
+    expect(filled(decisionMap.cells)).toEqual({ '6-2': 2, '6-3': 1 });
+    expect(decisionMap.total).toBe(total);
+  });
+
+  it('une période sans Décision a une carte vide : 7 jours de 24 heures à zéro', () => {
+    // Une Décision il y a 9 jours, avant la période : elle n'y est pas.
+    const tickets = [ticket('avant', [['open', ago(10)], ['awaiting_human', ago(9.5)], ['closed', ago(9)]]), daily('main', ['open', 'in_progress', 'closed'])];
+
+    const { decisionMap } = decisionsIn([project(tickets)]);
+    expect(decisionMap.total).toBe(0);
+    expect(decisionMap.cells).toHaveLength(7);
+    expect(decisionMap.cells.every((hours) => hours.length === 24 && hours.every((count) => count === 0))).toBe(true);
+  });
+});

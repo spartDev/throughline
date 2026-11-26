@@ -8,7 +8,8 @@ import { withTimeZone } from '../test/timeZone';
 
 /**
  * La Chaîne d'agents sur la page Métriques (bdesk-pz0.8), montée dans l'application entière devant un faux serveur : elle n'apparaît que si une Livraison de
- * la période est passée par un Statut de relais, pour un Projet comme pour la Vue globale ; sans elle, la page est celle d'avant.
+ * la période est passée par un Statut de relais, pour un Projet comme pour la Vue globale ; sans elle, la page est celle d'avant. Une telle Livraison a porté
+ * un Statut de relais : la page a alors ses onglets (bdesk-3e9.7), et la Chaîne d'agents est dans l'onglet Flux (`?tab=flow`).
  */
 
 const api = (data: MetricsResponse) => stubMetricsApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } }, () => data);
@@ -51,9 +52,9 @@ describe('la Chaîne d’agents sur la page Métriques', () => {
     expect(page.queryByRole('article', { name: 'Attente humaine' })).toBeNull();
   });
 
-  it('avec une Livraison passée par la chaîne, un Projet la montre entre la santé du flux et son analyse', async () => {
+  it('avec une Livraison passée par la chaîne, un Projet la montre dans l’onglet Flux, entre la santé du flux et son analyse', async () => {
     api(agentChainFixture({ projects: [{ id: 'bdesk', name: 'beads-desktop' }] }));
-    const page = await loaded('/p/bdesk/metrics');
+    const page = await loaded('/p/bdesk/metrics?tab=flow');
 
     const names = sections(page);
     expect(names.indexOf('Chaîne d’agents')).toBe(names.indexOf('Santé du flux') + 1);
@@ -61,12 +62,13 @@ describe('la Chaîne d’agents sur la page Métriques', () => {
     const section = page.getByRole('region', { name: 'Chaîne d’agents' });
     expect(within(section).getByRole('article', { name: 'Acceptation au premier passage' }).textContent).toContain('75');
     expect(within(section).getByRole('region', { name: 'Décomposition du Cycle Time' })).toBeTruthy();
-    expect(within(section).getByRole('article', { name: 'Attente humaine' })).toBeTruthy();
+    // L'Attente humaine est dans l'onglet Décisions : le Flux ne l'a plus.
+    expect(page.queryByRole('article', { name: 'Attente humaine' })).toBeNull();
   });
 
   it('la Vue globale la montre aussi', async () => {
     api(agentChainFixture());
-    const page = await loaded('/overview');
+    const page = await loaded('/overview?tab=flow');
 
     expect(page.getByRole('heading', { level: 2, name: 'Chaîne d’agents' })).toBeTruthy();
     expect(page.getByRole('article', { name: 'Acceptation au premier passage' })).toBeTruthy();

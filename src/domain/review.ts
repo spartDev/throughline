@@ -1,12 +1,12 @@
-import type { DeclaredStatuses, HandoffStatus, MetricsReview, MetricsReviewFailureRate, MetricsSendBackOrigin } from '../shared/api';
+import type { DeclaredStatuses, HandoffStatus, MetricsAcceptance, MetricsReview, MetricsReviewFailureRate, MetricsSendBackOrigin } from '../shared/api';
 import { resolvePeriod } from './calendar';
 import { type MetricsInput, type MetricsOptions, significanceOf, type TrackedTicket, trend } from './metrics';
 import { isDeclaredWip, isHandoffStatus } from './statuses';
 import type { Step } from './timeline';
 
 /**
- * Mesures de relecture (bdesk-pz0.5, ADR 0007) : Tours de relecture, Retours, Acceptation au premier passage, Couverture de relecture, Tours par
- * Livraison, Taux d'échec après relecture et Retours par origine. Tout se lit dans les Transitions déjà analysées (`TicketTimeline.steps`), sans autre
+ * Mesures de relecture (bdesk-pz0.5, ADR 0007) : Tours de relecture, Retours, Acceptation au premier passage (avec et sans Intention écrite, bdesk-3e9.7),
+ * Couverture de relecture, Tours par Livraison, Taux d'échec après relecture et Retours par origine. Tout se lit dans les Transitions déjà analysées (`TicketTimeline.steps`), sans autre
  * source. Du code pur, comme `computeHealth` : composé avec `computeMetrics` par le service de métriques (`MetricsResponse.review`), il lit les types et
  * la règle de signification de `metrics.ts`, qui ne l'importe pas en retour.
  *
@@ -93,6 +93,9 @@ export function computeReview(projects: MetricsInput[], { period, now, timeZone 
   const delivered = deliveredIn(projects, resolved.current.start, resolved.asOf);
   const reviewed = delivered.filter(({ review }) => review.rounds > 0);
   const acceptance = acceptanceOf(reviewed);
+  // L'Intention écrite inconnue (null) est parmi les autres : rien ne la prouve, comme pour la Livraison prouvée (`missingEvidence`).
+  const written = reviewed.filter(({ ticket }) => ticket.writtenIntent === true);
+  const unwritten = reviewed.filter(({ ticket }) => ticket.writtenIntent !== true);
   const rounds = (min: number, max = Number.POSITIVE_INFINITY) =>
     reviewed.filter(({ review }) => review.rounds >= min && review.rounds <= max).length;
   const sendBacks: Record<MetricsSendBackOrigin, number> = { review: 0, integration: 0, validation: 0 };
@@ -108,9 +111,9 @@ export function computeReview(projects: MetricsInput[], { period, now, timeZone 
     coverage: ratio(reviewed.length, delivered.length),
     firstPassAcceptance: {
       ...acceptance,
-      significant: reviewed.length >= MIN_REVIEWED_DELIVERIES,
       minReviewed: MIN_REVIEWED_DELIVERIES,
       trend: { ...trend(acceptance.rate, acceptanceOf(before).rate), previousSignificant: before.length >= MIN_REVIEWED_DELIVERIES },
+      byWrittenIntent: { withIntent: acceptanceOf(written), withoutIntent: acceptanceOf(unwritten) },
     },
     roundsPerDelivery: { one: rounds(1, 1), two: rounds(2, 2), three: rounds(3, 3), fourOrMore: rounds(4) },
     failureRate: {
@@ -131,10 +134,13 @@ function deliveredIn(projects: MetricsInput[], start: number, end: number): Deli
   );
 }
 
-/** L'Acceptation au premier passage de Livraisons relues : celles qui n'ont subi aucun Retour, de quelque origine qu'il soit. */
-function acceptanceOf(reviewed: Delivered[]): { accepted: number; reviewed: number; rate: number | null } {
+/**
+ * L'Acceptation au premier passage de Livraisons relues : celles qui n'ont subi aucun Retour, de quelque origine qu'il soit. Significative à partir de
+ * `MIN_REVIEWED_DELIVERIES` Livraisons relues.
+ */
+function acceptanceOf(reviewed: Delivered[]): MetricsAcceptance {
   const accepted = reviewed.filter(({ review }) => totalOf(review.sendBacks) === 0).length;
-  return { accepted, reviewed: reviewed.length, rate: ratio(accepted, reviewed.length) };
+  return { accepted, reviewed: reviewed.length, rate: ratio(accepted, reviewed.length), significant: reviewed.length >= MIN_REVIEWED_DELIVERIES };
 }
 
 /** Le Taux d'échec d'une partie des Livraisons : celles qui ont au moins un Bug d'origine (`TrackedTicket.failed`), comme la tuile. */

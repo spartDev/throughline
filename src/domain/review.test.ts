@@ -53,6 +53,9 @@ const project = (tickets: MetricsTicket[], declared: DeclaredStatuses = NO_DECLA
 });
 
 const options = { period: { range: '7d' }, now: new Date(NOW), timeZone: PARIS } as const;
+
+/** L'Acceptation au premier passage d'une partie sans Livraison relue. */
+const NONE_REVIEWED = { accepted: 0, reviewed: 0, rate: null, significant: false };
 const reviewIn = (projects: MetricsInput[]) => computeReview(projects, options);
 
 describe('Tours de relecture et Retours d’un ticket', () => {
@@ -140,7 +143,15 @@ describe('mesures de relecture de la période', () => {
       handedOff: 0,
       reviewed: 0,
       coverage: null,
-      firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10, trend: { previous: null, delta: null, ratio: null, previousSignificant: false } },
+      firstPassAcceptance: {
+        accepted: 0,
+        reviewed: 0,
+        rate: null,
+        significant: false,
+        minReviewed: 10,
+        trend: { previous: null, delta: null, ratio: null, previousSignificant: false },
+        byWrittenIntent: { withIntent: NONE_REVIEWED, withoutIntent: NONE_REVIEWED },
+      },
       roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
       failureRate: expect.objectContaining({
         reviewed: { deliveries: 0, failed: 0, rate: null },
@@ -304,13 +315,13 @@ describe('mesures de relecture de la période', () => {
   ])('le seuil : %i Livraisons relues, Acceptation au premier passage significative : %s', (n, significant) => {
     const tickets = Array.from({ length: n }, (_, i) => delivered(`t${i}`, ['in_progress', 'in_review', ...(i === 0 ? ['in_progress', 'in_review'] : [])]));
     const { firstPassAcceptance } = reviewIn([project([...tickets, delivered('non-relue', ['in_progress'])])]);
+    // Leurs critères d'acceptation sont inconnus : toutes sont parmi les Livraisons sans Intention écrite, qui ont donc la même Acceptation.
+    const acceptance = { accepted: n - 1, reviewed: n, rate: (n - 1) / n, significant };
     expect(firstPassAcceptance).toEqual({
-      accepted: n - 1,
-      reviewed: n,
-      rate: (n - 1) / n,
-      significant,
+      ...acceptance,
       minReviewed: 10,
       trend: { previous: null, delta: null, ratio: null, previousSignificant: false },
+      byWrittenIntent: { withIntent: NONE_REVIEWED, withoutIntent: acceptance },
     });
   });
 
@@ -411,5 +422,54 @@ describe('mesures de relecture de la période', () => {
     const tile = computeMetrics([a, b], options).tiles.failureRate;
     expect(global.failureRate.coverage).toEqual(tile.coverage);
     expect(global.failureRate.coverage).toEqual({ bugs: 1, linked: 1, ratio: 1 });
+  });
+});
+
+describe('Acceptation au premier passage selon l’Intention écrite (bdesk-3e9.7)', () => {
+  /** Une Livraison relue dont les critères d'acceptation, à chaque instantané, sont `criteria` (undefined : l'historique ne le dit pas). */
+  const intended = (id: string, middle: string[], criteria: boolean | undefined) => {
+    const base = delivered(id, middle);
+    return { ...base, statusSnapshots: base.statusSnapshots.map((snapshot) => (criteria === undefined ? snapshot : { ...snapshot, hasAcceptanceCriteria: criteria })) };
+  };
+  const accepted = ['in_progress', 'in_review', 'in_integration'];
+  const sentBack = ['in_progress', 'in_review', 'in_progress', 'in_review'];
+
+  it('coupe les Livraisons relues : avec une Intention écrite d’un côté, sans, ou inconnue, de l’autre ; les deux font les Livraisons relues', () => {
+    const { firstPassAcceptance, reviewed } = reviewIn([
+      project([
+        intended('ecrite-ok', accepted, true),
+        intended('ecrite-ok-2', accepted, true),
+        intended('ecrite-retour', sentBack, true),
+        intended('vide-ok', accepted, false),
+        intended('vide-retour', sentBack, false),
+        intended('inconnue-retour', sentBack, undefined),
+        // Une Livraison non relue n'est d'aucun côté, avec ou sans Intention écrite.
+        intended('non-relue', ['in_progress'], true),
+      ]),
+    ]);
+
+    expect(firstPassAcceptance.byWrittenIntent).toEqual({
+      withIntent: { accepted: 2, reviewed: 3, rate: 2 / 3, significant: false },
+      withoutIntent: { accepted: 1, reviewed: 3, rate: 1 / 3, significant: false },
+    });
+    const { withIntent, withoutIntent } = firstPassAcceptance.byWrittenIntent;
+    expect(withIntent.reviewed + withoutIntent.reviewed).toBe(reviewed);
+    expect(withIntent.accepted + withoutIntent.accepted).toBe(firstPassAcceptance.accepted);
+  });
+
+  it('l’Intention écrite se lit au premier démarrage : des critères écrits ensuite n’en font pas une', () => {
+    const later = delivered('ecrite-apres', accepted);
+    const snapshots = later.statusSnapshots.map((snapshot) => ({ ...snapshot, hasAcceptanceCriteria: snapshot.status !== 'open' && snapshot.status !== 'in_progress' }));
+    const { firstPassAcceptance } = reviewIn([project([{ ...later, statusSnapshots: snapshots }])]);
+    expect(firstPassAcceptance.byWrittenIntent.withIntent.reviewed).toBe(0);
+    expect(firstPassAcceptance.byWrittenIntent.withoutIntent).toEqual({ accepted: 1, reviewed: 1, rate: 1, significant: false });
+  });
+
+  it('chaque partie a son seuil de 10 Livraisons relues, celui de l’Acceptation entière', () => {
+    const many = Array.from({ length: MIN_REVIEWED_DELIVERIES }, (_, i) => intended(`e${i}`, accepted, true));
+    const few = Array.from({ length: MIN_REVIEWED_DELIVERIES - 1 }, (_, i) => intended(`v${i}`, accepted, false));
+    const { byWrittenIntent } = reviewIn([project([...many, ...few])]).firstPassAcceptance;
+    expect(byWrittenIntent.withIntent.significant).toBe(true);
+    expect(byWrittenIntent.withoutIntent.significant).toBe(false);
   });
 });

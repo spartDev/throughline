@@ -159,6 +159,28 @@ describe('CFD : les colonnes des Statuts de relais (columnFor, à chaque instant
   });
 });
 
+describe('les Statuts de relais des Projets mesurés (`MetricsReport.handoff`, bdesk-3e9.7)', () => {
+  it('aucun pour un Projet qui n’en déclare ni n’en porte : la page Métriques n’a pas d’onglets', () => {
+    expect(metricsOf([project([ticket('dev', [['open', ago(6)], ['in_progress', ago(5)]])])]).handoff).toEqual([]);
+  });
+
+  it('ceux qu’un Projet déclare, même sans ticket ni Transition dans la période : la déclaration, pas la période', () => {
+    const quiet = project([ticket('vieux', [['open', ago(60)], ['in_progress', ago(59)], ['closed', ago(58)]])], { handoff: ['awaiting_human', 'in_review'], others: [] });
+    expect(metricsOf([quiet]).handoff).toEqual(['in_review', 'awaiting_human']);
+  });
+
+  it('ceux qu’un ticket a portés, même avant la période et sans déclaration ; la Vue globale réunit ceux de ses Projets, dans l’ordre des relais', () => {
+    const carried = project([ticket('t', [['open', ago(30)], ['in_integration', ago(29)], ['closed', ago(28)]])], undefined, 'p');
+    const declared = project([ticket('pret', [['open', ago(6)]])], { handoff: ['in_review'], others: [] }, 'q');
+    const none = project([ticket('dev', [['open', ago(6)], ['in_progress', ago(5)]])], undefined, 'r');
+
+    expect(metricsOf([carried]).handoff).toEqual(['in_integration']);
+    expect(metricsOf([none, carried, declared]).handoff).toEqual(['in_review', 'in_integration']);
+    // Ce sont les colonnes de relais du CFD, ni plus ni moins.
+    expect(columnsIn(metricsOf([none, carried, declared]).cfd.at(-1))).toEqual(['backlog', 'ready', 'inProgress', 'inReview', 'inIntegration', 'blocked', 'done']);
+  });
+});
+
 describe('Cycle Time et Efficacité du flux', () => {
   it('comptent le temps des Statuts de relais dans le Cycle Time, et son Blocage dans la part bloquée', () => {
     // 2 h en cours, puis 4 h en relecture dont les 2 dernières bloquées par x : Cycle Time 6 h, dont 2 h de Blocage.

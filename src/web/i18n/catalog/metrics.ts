@@ -2,6 +2,7 @@ import { breakdowns } from './metrics/breakdowns';
 import { chain } from './metrics/chain';
 import { charts } from './metrics/charts';
 import { core } from './metrics/core';
+import { decisions } from './metrics/decisions';
 import { page } from './metrics/page';
 import { tiles } from './metrics/tiles';
 import type { Zone } from './zone';
@@ -13,11 +14,11 @@ import type { Zone } from './zone';
  * `fr` et `en` dont les clés de premier niveau sont des groupes (un composant ou un écran). Ce module les réunit : `t.metrics.<groupe>.<clé>`.
  * Un groupe n'est défini que dans un seul module (le test « groupes uniques » de `metrics/i18n.test.ts` le vérifie).
  */
-const fr = { ...core.fr, ...tiles.fr, ...charts.fr, ...breakdowns.fr, ...chain.fr, ...page.fr };
+const fr = { ...core.fr, ...tiles.fr, ...charts.fr, ...breakdowns.fr, ...chain.fr, ...decisions.fr, ...page.fr };
 
-const en: typeof fr = { ...core.en, ...tiles.en, ...charts.en, ...breakdowns.en, ...chain.en, ...page.en };
+const en: typeof fr = { ...core.en, ...tiles.en, ...charts.en, ...breakdowns.en, ...chain.en, ...decisions.en, ...page.en };
 
 export const metrics: Zone<typeof fr> = { fr, en };
 
 /** Les modules de groupes, pour le test qui vérifie qu'aucun groupe n'est défini deux fois. */
-export const METRICS_GROUP_MODULES = { core, tiles, charts, breakdowns, chain, page };
+export const METRICS_GROUP_MODULES = { core, tiles, charts, breakdowns, chain, decisions, page };

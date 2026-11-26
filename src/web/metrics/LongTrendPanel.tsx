@@ -24,6 +24,12 @@ const SOUND = projectColor(195);
 
 type LongTrendTexts = Messages['metrics']['longTrend'];
 
+/**
+ * Une semaine d'une tendance sur 12 semaines : celles de la Tendance longue, et celles des Décisions (`MetricsDecisionsWeek`, bdesk-3e9.7), qui ont les mêmes
+ * bornes. Les tracés de ce module (`Plot`, `BarPlot`, `LinePlot`) n'en lisent que cela.
+ */
+export type TrendWeek = Pick<MetricsLongTrendWeek, 'from' | 'to' | 'partial'>;
+
 const deliveriesText = (texts: LongTrendTexts, format: DisplayFormat, count: number) => texts.deliveries(count, format.formatCount(count));
 const soundText = (texts: LongTrendTexts, format: DisplayFormat, count: number) => texts.soundDeliveries(count, format.formatCount(count));
 
@@ -144,7 +150,7 @@ export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
 }
 
 /** Un tracé et son titre ; `note`, une remarque sous le titre. Les deux sont cachés aux lecteurs d'écran : le nom du dessin les dit. */
-function Plot({ title, note, children }: { title: string; note?: string; children: (size: { width: number; height: number }) => React.ReactNode }) {
+export function Plot({ title, note, children }: { title: string; note?: string; children: (size: { width: number; height: number }) => React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <p aria-hidden="true" className="text-micro font-medium text-ink-2">
@@ -161,11 +167,11 @@ function Plot({ title, note, children }: { title: string; note?: string; childre
 }
 
 /** L'axe des semaines, partagé par les quatre tracés : une bande par semaine, nommée de son lundi. */
-function weekScale(weeks: readonly MetricsLongTrendWeek[], innerWidth: number) {
+function weekScale(weeks: readonly TrendWeek[], innerWidth: number) {
   return scaleBand<number>({ domain: weeks.map((_, index) => index), range: [0, innerWidth], padding: 0.25 });
 }
 
-function WeekAxis({ weeks, x, top, innerWidth }: { weeks: readonly MetricsLongTrendWeek[]; x: ReturnType<typeof weekScale>; top: number; innerWidth: number }) {
+function WeekAxis({ weeks, x, top, innerWidth }: { weeks: readonly TrendWeek[]; x: ReturnType<typeof weekScale>; top: number; innerWidth: number }) {
   const { formatDay } = useFormat();
   return (
     <AxisBottom
@@ -185,7 +191,7 @@ function WeekAxis({ weeks, x, top, innerWidth }: { weeks: readonly MetricsLongTr
  * Débit, pour que leurs barres se comparent à la même échelle. `faint` : une mesure non significative, dont les barres pâlissent (le contour, lui, garde son
  * contraste). La semaine en cours est hachurée.
  */
-function BarPlot({
+export function BarPlot<W extends TrendWeek>({
   weeks,
   value,
   top: max,
@@ -196,14 +202,14 @@ function BarPlot({
   width,
   height,
 }: {
-  weeks: readonly MetricsLongTrendWeek[];
-  value: (week: MetricsLongTrendWeek) => number;
+  weeks: readonly W[];
+  value: (week: W) => number;
   top: number;
   color: string;
   /** Le nom du dessin, pour les lecteurs d'écran. */
   label: string;
   /** Le nombre d'une semaine, en mots, pour l'infobulle de sa barre. */
-  describe: (count: number, week: MetricsLongTrendWeek) => string;
+  describe: (count: number, week: W) => string;
   faint?: boolean;
   width: number;
   height: number;
@@ -270,7 +276,7 @@ function BarPlot({
  * Une courbe par semaine, sans lissage : un trait droit entre deux semaines voisines qui ont chacune une valeur, aucun par-dessus une semaine qui n'en a
  * pas. Un trait qui touche une semaine `dashed` (ou la semaine en cours) est en pointillé, et le point de cette semaine est creux.
  */
-function LinePlot({
+export function LinePlot<W extends TrendWeek>({
   subject,
   weeks,
   value,
@@ -283,9 +289,9 @@ function LinePlot({
   height,
 }: {
   subject: string;
-  weeks: readonly MetricsLongTrendWeek[];
-  value: (week: MetricsLongTrendWeek) => number | null;
-  dashed: (week: MetricsLongTrendWeek) => boolean;
+  weeks: readonly W[];
+  value: (week: W) => number | null;
+  dashed: (week: W) => boolean;
   /** Le haut de l'axe et ses graduations, pour la plus grande valeur ; sans graduations données, celles de l'échelle. */
   ticks: (max: number) => { top: number; values: number[] };
   /** Une graduation écrite : jamais de chevron, que l'axe ne cache pas aux lecteurs d'écran. */
@@ -304,7 +310,7 @@ function LinePlot({
   const y = scaleLinear({ domain: [0, axis.top], range: [innerHeight, 0], nice: axis.values.length === 0 });
   const yTicks = axis.values.length > 0 ? axis.values : y.ticks(3);
   const cx = (index: number) => (x(index) ?? 0) + x.bandwidth() / 2;
-  const faint = (week: MetricsLongTrendWeek) => dashed(week) || week.partial;
+  const faint = (week: W) => dashed(week) || week.partial;
   const measured = values.filter((v) => v !== null).length;
   const t = useT();
   const display = useFormat();
@@ -321,7 +327,7 @@ function LinePlot({
       <Group left={MARGIN.left} top={MARGIN.top}>
         <GridRows scale={y} width={innerWidth} tickValues={yTicks} stroke="var(--line)" />
         {weeks.slice(1).map((week, offset) => {
-          const previous = weeks[offset] as MetricsLongTrendWeek;
+          const previous = weeks[offset] as W;
           const [from, to] = [values[offset], values[offset + 1]];
           if (from === null || from === undefined || to === null || to === undefined) return null;
           return (
@@ -390,7 +396,7 @@ function durationTicks(max: number): { top: number; values: number[] } {
   return { top, values: [0, ...values.reverse()] };
 }
 
-const weekTitle = (texts: LongTrendTexts, format: DisplayFormat, week: MetricsLongTrendWeek) => texts.week(format.formatDayRange(week.from, week.to));
+const weekTitle = (texts: LongTrendTexts, format: DisplayFormat, week: TrendWeek) => texts.week(format.formatDayRange(week.from, week.to));
 
 /**
  * `unreliable` : « Moins de 4 Livraisons », la remarque d'une semaine dont le P85 n'est pas digne de foi (la même que la légende). `soundNote` : le motif du

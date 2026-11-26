@@ -861,14 +861,21 @@ export interface MetricsReadyAges {
 }
 
 /**
- * Carte d'activité : les Transitions de la période (la création d'un ticket n'en est pas une), rangées par jour de la semaine
- * et par heure du jour dans le fuseau `timeZone` de la réponse.
+ * Des instants rangés par jour de la semaine et par heure du mur dans le fuseau `timeZone` de la réponse : la grille de la Carte d'activité et de la Carte
+ * des Décisions. L'heure est celle du mur : au changement d'heure d'automne, la même heure revient deux fois dans la même case.
  */
-export interface MetricsActivity {
+export interface MetricsWeekHourMap {
   /** `cells[jour][heure]` : 7 jours, du lundi (0) au dimanche (6), de 24 heures chacun (0 pour 00:00–00:59). */
   cells: number[][];
   /** Somme des `cells`. */
   total: number;
+}
+
+/**
+ * Carte d'activité : les Transitions de la période (la création d'un ticket n'en est pas une), rangées par jour de la semaine
+ * et par heure du jour dans le fuseau `timeZone` de la réponse.
+ */
+export interface MetricsActivity extends MetricsWeekHourMap {
   /**
    * Heures à l'arrêt : la Durée écoulée de la période (ms) pendant laquelle le Flux d'un Projet était à l'arrêt, sommée sur les Projets, et le nombre
    * moyen de Prêts pendant ce temps, pesé par lui (null sans Heures à l'arrêt).
@@ -938,6 +945,18 @@ export interface MetricsHealth {
 /** L'origine d'un Retour : le Statut de relais qu'il quitte (En relecture, En intégration, À valider). */
 export type MetricsSendBackOrigin = 'review' | 'integration' | 'validation';
 
+/** L'Acceptation au premier passage de Livraisons relues (`MetricsReview.firstPassAcceptance`) : celles qui n'ont subi aucun Retour. */
+export interface MetricsAcceptance {
+  /** Livraisons relues sans aucun Retour. */
+  accepted: number;
+  /** Livraisons relues : le dénominateur. */
+  reviewed: number;
+  /** `accepted / reviewed`, de 0 à 1 ; null sans Livraison relue. */
+  rate: number | null;
+  /** Faux sous `MetricsReview.firstPassAcceptance.minReviewed` Livraisons relues. */
+  significant: boolean;
+}
+
 /** Un Taux d'échec sur une partie des Livraisons de la période (`MetricsReview.failureRate`). */
 export interface MetricsReviewFailureRate {
   /** Livraisons de cette partie. */
@@ -967,17 +986,16 @@ export interface MetricsReview {
   /** Couverture de relecture : `reviewed / deliveries`, de 0 à 1 ; null sans Livraison. */
   coverage: number | null;
   /** Acceptation au premier passage : la part des Livraisons relues qui n'ont subi aucun Retour, de quelque origine qu'il soit. */
-  firstPassAcceptance: {
-    /** Livraisons relues sans aucun Retour. */
-    accepted: number;
-    /** Livraisons relues : le dénominateur, `MetricsReview.reviewed`. */
-    reviewed: number;
-    /** `accepted / reviewed`, de 0 à 1 ; null sans Livraison relue. */
-    rate: number | null;
-    /** Faux sous `minReviewed` Livraisons relues. */
-    significant: boolean;
-    /** Le seuil : 10 Livraisons relues. */
+  firstPassAcceptance: MetricsAcceptance & {
+    /** Le seuil de `significant`, ici et dans `byWrittenIntent` : 10 Livraisons relues. */
     minReviewed: number;
+    /**
+     * La même Acceptation, coupée selon l'Intention écrite des Livraisons relues (bdesk-3e9.7) : celles qui en avaient une à leur premier démarrage, et les
+     * autres. Une Intention écrite que l'historique ne permet pas de lire (un schéma ou un commit d'avant la colonne des critères d'acceptation) est parmi les
+     * autres : rien ne la prouve, comme pour la Livraison prouvée. Les deux parties font les Livraisons relues de la période, chacune significative par le même
+     * seuil.
+     */
+    byWrittenIntent: { withIntent: MetricsAcceptance; withoutIntent: MetricsAcceptance };
     /**
      * `rate` comparé à celui de la période précédente (bdesk-pz0.8), à durée écoulée égale comme les tuiles : ses Livraisons relues de
      * [`previousPeriod.start`, `previousAsOf`). `previous` est null sans Livraison relue sur cette fenêtre-là. `previousSignificant` est faux quand
@@ -1139,6 +1157,11 @@ export interface MetricsDecisions extends MetricsDecisionTally {
   evidencedDeliveries: MetricsEvidencedDeliveries;
   /** Les 12 semaines qui finissent par la semaine en cours, quelle que soit la période, sans lissage. */
   weeks: MetricsDecisionsWeek[];
+  /**
+   * Carte des Décisions (bdesk-3e9.7) : les Décisions de la période, celles de `total`, par jour de la semaine et heure du mur dans le fuseau `timeZone` de la
+   * réponse, comme la Carte d'activité range les Transitions : quand l'utilisateur décide, à côté de quand le travail avance.
+   */
+  decisionMap: MetricsWeekHourMap;
 }
 
 /** Ce que le domaine calcule : tout ce qu'affiche la page Métriques, hors Projets. */
@@ -1176,6 +1199,12 @@ export interface MetricsReport {
   /** Tickets en cours à `asOf`, du plus ancien au plus récent. */
   inProgress: MetricsInProgressTicket[];
   slices: MetricsSlices;
+  /**
+   * Les Statuts de relais qu'ont les Projets mesurés (`ProjectAnalysis.handoff`) : ceux qu'un Projet déclare, et ceux qu'un de ses tickets a portés, à quelque
+   * moment que ce soit de son historique, dans l'ordre de `HANDOFF_STATUSES`. Indépendants de la période : ce sont les colonnes de relais du CFD. La page
+   * Métriques n'a ses onglets Décisions et Flux que s'il y en a un (bdesk-3e9.7) ; sans eux, elle est celle d'avant.
+   */
+  handoff: HandoffStatus[];
 }
 
 export interface MetricsProject {

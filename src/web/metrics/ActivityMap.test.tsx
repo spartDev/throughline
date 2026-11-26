@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActivityPanel } from './ActivityMap';
-import { emptyHealthFixture, healthFixture, plain, stubChartWidth } from './testing';
+import { TooltipProvider } from '../ui/Tip';
+import { ActivityPanel, DecisionMapPanel } from './ActivityMap';
+import { decisionsFixture, emptyHealthFixture, healthFixture, heldDecisionsFixture, plain, stubChartWidth } from './testing';
 
 beforeEach(() => stubChartWidth(640));
 afterEach(() => vi.restoreAllMocks());
@@ -176,5 +177,54 @@ describe('ActivityPanel : la carte d’activité', () => {
 
     expect(screen.getByText('Aucune Transition sur cette période.')).toBeTruthy();
     expect(container.querySelector('svg')).toBeNull();
+  });
+});
+
+const renderDecisionMap = (map = heldDecisionsFixture().decisionMap) =>
+  render(
+    <TooltipProvider>
+      <DecisionMapPanel map={map} timeZone="Europe/Paris" />
+    </TooltipProvider>,
+  );
+
+/**
+ * La Carte des Décisions (bdesk-3e9.7) : la même grille que la Carte d'activité, la même légende et les mêmes niveaux, mais des Décisions. Fixture : 9
+ * Décisions, 5 le lundi de 9 h à 10 h, 3 le mercredi de 14 h à 15 h, 1 le vendredi de 22 h à 23 h.
+ */
+describe('DecisionMapPanel : la Carte des Décisions', () => {
+  it('dit ce qu’elle compte, dans quel fuseau, et le pic, sur la même grille que la Carte d’activité', () => {
+    const { container } = renderDecisionMap();
+
+    expect(screen.getByRole('region', { name: 'Carte des Décisions' })).toBeTruthy();
+    expect(plain(screen.getByText(/^9 Décisions/).textContent)).toBe(
+      '9 Décisions par jour de la semaine et par heure, dans le fuseau Europe/Paris. Pic : lundi, de 9 h à 10 h (5). ' +
+        'Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période.',
+    );
+    expect(screen.getByRole('img', { name: `Carte des Décisions : 9 Décisions, pic le lundi de 9${NBSP}h à 10${NBSP}h (5 Décisions).` })).toBeTruthy();
+    expect(container.querySelectorAll('[data-cell]')).toHaveLength(168);
+    expect(cell(container, 0, 9).getAttribute('data-count')).toBe('5');
+    expect(cell(container, 0, 9).getAttribute('data-level')).toBe('4');
+    expect(cell(container, 2, 14).getAttribute('data-level')).toBe('3'); // 3 sur 5
+    expect(cell(container, 4, 22).getAttribute('data-level')).toBe('1'); // 1 sur 5
+    expect(screen.getByRole('list', { name: 'Légende de la carte des Décisions' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'À propos de Carte des Décisions' })).toBeTruthy();
+  });
+
+  it('détaille une case au survol en Décisions', () => {
+    const { container } = renderDecisionMap();
+
+    fireEvent.pointerMove(hitArea(container), { ...centerOf(cell(container, 0, 9)), pointerType: 'mouse' });
+    expect(plain(container.querySelector('[data-chart-tooltip]')?.textContent)).toContain('5 Décisions');
+  });
+
+  it('dit qu’il n’y a eu aucune Décision sur la période plutôt que de dessiner une grille vide', () => {
+    const { container } = renderDecisionMap(decisionsFixture().decisionMap);
+
+    expect(screen.getByRole('status').textContent).toBe('Aucune Décision sur cette période.');
+    expect(container.querySelector('[data-cell]')).toBeNull();
+    expect(screen.queryByRole('img', { name: /^Carte des Décisions/ })).toBeNull();
+    expect(plain(screen.getByText(/^Les Décisions par jour de la semaine/).textContent)).toBe(
+      'Les Décisions par jour de la semaine et par heure, dans le fuseau Europe/Paris.',
+    );
   });
 });

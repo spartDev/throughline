@@ -554,10 +554,12 @@ describe('API des métriques', () => {
     expect(body.cfd).toHaveLength(30);
     expect(Object.keys(body).sort()).toEqual(
       [
-        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeBreakdown', 'cycleTimeScatter', 'decisions', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf',
+        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeBreakdown', 'cycleTimeScatter', 'decisions', 'generatedAt', 'handoff', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf',
         'previousPeriod', 'projects', 'range', 'review', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
       ].sort(),
     );
+    // Statuts de relais des Projets mesurés (bdesk-3e9.7) : un ajout au contrat ; sans eux, la page Métriques n'a pas d'onglets.
+    expect(body.handoff).toEqual([]);
     // Mesures de relecture (bdesk-pz0.5) : un ajout au contrat, à côté du rapport ; un Projet sans Statut de relais n'a aucune Livraison relue.
     expect(body.review).toMatchObject({ reviewed: 0, firstPassAcceptance: { reviewed: 0, rate: null, significant: false, minReviewed: 10 } });
     // Décomposition du Cycle Time (bdesk-pz0.6) : un ajout au contrat, à côté de la relecture ; sans Statut de relais ni Retour, tout le travail est en Développement.
@@ -604,6 +606,8 @@ describe('API des métriques', () => {
       attentionCost: { deliveries: 1, decisions: 2, perDelivery: 2 },
     });
     expect(body.decisions.weeks).toHaveLength(12);
+    // Les Statuts de relais que portent ses tickets, dans l'ordre du relais : ceux des colonnes du CFD (bdesk-3e9.7).
+    expect(body.handoff).toEqual(['in_review', 'awaiting_human']);
     // Toutes datées depuis le lundi 19 octobre : la semaine en cours les porte toutes.
     expect(body.decisions.weeks.at(-1)).toMatchObject({ from: '2026-10-19', partial: true, total: 4, attentionCost: { deliveries: 1, perDelivery: 2 } });
     // Le Report n'est pas une Prise rendue : rien de tout cela n'entre dans le Retravail, hormis la Réouverture du Refus.
