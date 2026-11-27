@@ -1,5 +1,5 @@
 import { MIN_CUSTOM_DAY } from '../../domain/calendar';
-import type { MetricsRangePreset } from '../../shared/api';
+import type { MetricsRangePreset, MetricsResponse } from '../../shared/api';
 import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
 import { METRICS_PARAMS } from '../paths';
@@ -31,6 +31,12 @@ export type MetricsTab = 'decisions' | 'flow';
 
 export const TABS: readonly MetricsTab[] = ['decisions', 'flow'];
 export const DEFAULT_TAB: MetricsTab = 'decisions';
+
+/**
+ * La page a ses onglets (bdesk-3e9.7) quand un Projet de la vue a les Statuts de relais, déclarés ou portés, quelle que soit la période. Sans eux, la page est
+ * celle d'avant : le Flux seul, et `?tab=` n'y règle rien. Le Rapport de rétrospective a sa section Décisions à la même condition (bdesk-3e9.8).
+ */
+export const hasTabs = (data: Pick<MetricsResponse, 'handoff'>): boolean => data.handoff.length > 0;
 
 export const PRESETS: readonly MetricsRangePreset[] = ['7d', '30d', '90d'];
 export const DEFAULT_RANGE: MetricsRangePreset = '30d';

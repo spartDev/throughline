@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import type { SignalsResponse } from '../../shared/api';
+import type { MetricsDecisions, MetricsSoundThroughputTile, SignalsResponse } from '../../shared/api';
 import type { NamedMetricsResponse } from './api';
 import { buildRetrospective, escapeMarkdown, evolution } from './retrospective';
-import { acceptanceTrendOf, agentChainFixture, emptyHealthFixture, metricsFixture, NO_INTENT_SPLIT, plain, trendOf } from './testing';
+import {
+  acceptanceTrendOf,
+  agentChainFixture,
+  emptyHealthFixture,
+  ENOUGH_COVERAGE,
+  heldDecisionsFixture,
+  LOW_COVERAGE,
+  metricsFixture,
+  NO_INTENT_SPLIT,
+  plain,
+  trendOf,
+} from './testing';
 import { MEASURES } from './trend';
 
 const DAY = 86_400_000;
@@ -242,6 +253,239 @@ describe('la Chaîne d’agents du rapport (bdesk-pz0.8)', () => {
   });
 });
 
+/**
+ * Le rapport de `metricsFixture`, sans Statut de relais, avec le seul Signal de Dérive, tel que l'écrivait la version d'avant le Débit sain (bdesk-3e9.8) : relevé
+ * sur le commit c15e9b6, espaces insécables comprises comme des espaces (`plain`).
+ */
+const REPORT_BEFORE_SOUND_THROUGHPUT = `${[
+  '# Rétrospective : Vue globale, 27 oct. – 2 nov. 2026',
+  '',
+  'Période en cours (27 oct. – 2 nov. 2026), comptée jusqu’au 2 nov. à 20:00. Les tendances la comparent à la période précédente (20 oct. – 26 oct. 2026) à durée écoulée égale, c’est-à-dire jusqu’au 26 oct. à 19:00.',
+  '',
+  '## Indicateurs',
+  '',
+  '| Indicateur | Période | Précédente | Évolution |',
+  '| --- | ---: | ---: | --- |',
+  '| Débit | 18 Livraisons | 28 | −10 (−36 %), en moins bien |',
+  '| Lead Time (médiane) | 6,9 j | 16 h 28 | +6,2 j (+903 %), en moins bien |',
+  '| Lead Time (P85) | 16 j | 4 j | +12 j (+304 %), en moins bien |',
+  '| Taux de Réouverture | 9,5 % (2 sur 21 clôtures) | 4 % | +5,5 pts, en moins bien |',
+  '| Taux d’échec | 0 % (0 sur 18 Livraisons), non significatif | 0 % | stable |',
+  '',
+  '_Taux d’échec non significatif : couverture insuffisante : 19 % des bugs ont une origine renseignée (minimum 50 %)._',
+  '',
+  '## Tendance longue (12 semaines)',
+  '',
+  '| Semaine du | Débit | Lead Time (P85) | Taux de Réouverture |',
+  '| --- | ---: | ---: | ---: |',
+  '| 17 août | 5 | 1 j | 20 % |',
+  '| 24 août | 6 | 2 j | 16,7 % |',
+  '| 31 août | 4 | 3 j | 25 % |',
+  '| 7 sept. | 0 | — | — |',
+  '| 14 sept. | 3 | 5 j \\* | 0 % |',
+  '| 21 sept. | 7 | 6 j | 14,3 % |',
+  '| 28 sept. | 5 | 7 j | 20 % |',
+  '| 5 oct. | 8 | 8 j | 25 % |',
+  '| 12 oct. | 6 | 9 j | 16,7 % |',
+  '| 19 oct. | 4 | 10 j | 25 % |',
+  '| 26 oct. | 5 | 11 j | 20 % |',
+  '| 2 nov. (en cours) | 1 | 12 j \\* | 0 % |',
+  '',
+  '\\* Moins de 4 Livraisons dans la semaine : le centile ne dit pas grand-chose.',
+  '',
+  '## Retravail (2 tickets)',
+  '',
+  '- `bdesk-r1` Palette ⌘K (beads-desktop) : 2 Réouvertures, Bug d’origine `bdesk-b9`',
+  '- `mpm-r2` Import des récoltes (Mon-Pommier-Malin) : 1 Prise rendue',
+  '',
+  '## Signaux en cours (1 Signal, au 2 nov. à 20:00)',
+  '',
+  '### Dérive',
+  '',
+  '- `bdesk-d1` Refonte \\| kanban (beads-desktop) : 9 j de Cycle Time en cours, au-delà de 4 j, le P85 des Livraisons du même type',
+].join('\n')}\n`;
+
+describe('le Débit sain du rapport (bdesk-3e9.8)', () => {
+  const withSound = (sound: Partial<MetricsSoundThroughputTile>) => {
+    const base = metricsFixture();
+    return metricsFixture({ tiles: { ...base.tiles, soundThroughput: { ...base.tiles.soundThroughput, ...sound } } });
+  };
+
+  it('sans Statut de relais, seul le Débit sain s’ajoute : le reste du rapport est celui d’avant, à l’octet près', () => {
+    const text = build(metricsFixture(), signalsResponse({ signals: signalsResponse().signals.slice(0, 1) }));
+    const added = [
+      '| Débit sain | 14 sur 18 Livraisons, non significatif, provisoire | 22 | −8 (−36 %), en moins bien |\n',
+      '_Débit sain non significatif : couverture insuffisante : 19 % des bugs ont une origine renseignée (minimum 50 %)._\n\n',
+      '_Débit sain provisoire : des Livraisons peuvent encore revenir._\n\n',
+    ];
+    for (const line of added) expect(text).toContain(line);
+    expect(added.reduce((rest, line) => rest.replace(line, ''), text)).toBe(REPORT_BEFORE_SOUND_THROUGHPUT);
+  });
+
+  it('suit le Débit, et ses réserves précèdent celle du Taux d’échec, dans l’ordre des lignes', () => {
+    const text = build();
+    expect(text).toContain('| Débit | 18 Livraisons | 28 | −10 (−36 %), en moins bien |\n| Débit sain | 14 sur 18 Livraisons, non significatif, provisoire |');
+    expect(text).toContain(
+      '| Taux d’échec | 0 % (0 sur 18 Livraisons), non significatif | 0 % | stable |\n\n' +
+        '_Débit sain non significatif : couverture insuffisante : 19 % des bugs ont une origine renseignée (minimum 50 %)._\n\n' +
+        '_Débit sain provisoire : des Livraisons peuvent encore revenir._\n\n' +
+        '_Taux d’échec non significatif : ',
+    );
+  });
+
+  it('significatif sur une période finie : ni réserve sur sa ligne, ni note dessous', () => {
+    const text = build(withSound({ ...ENOUGH_COVERAGE, provisional: false }));
+    expect(text).toContain('| Débit sain | 14 sur 18 Livraisons | 22 | −8 (−36 %), en moins bien |');
+    expect(text).not.toContain('Débit sain non significatif');
+    expect(text).not.toContain('Débit sain provisoire');
+  });
+
+  it('accorde au singulier, et n’est pas provisoire sans Livraison : rien ne peut revenir', () => {
+    expect(build(withSound({ total: 1, deliveries: 1, trend: trendOf(1, 1) }))).toContain('| Débit sain | 1 sur 1 Livraison, non significatif, provisoire | 1 | stable |');
+    const none = build(withSound({ total: 0, deliveries: 0, ...LOW_COVERAGE, trend: trendOf(0, 3) }));
+    expect(none).toMatch(/\| Débit sain \| 0 Livraison, non significatif \| 3 \| /);
+    expect(none).toContain('_Débit sain non significatif : ');
+    expect(none).not.toContain('Débit sain provisoire');
+  });
+});
+
+describe('les Décisions du rapport (bdesk-3e9.8)', () => {
+  const decided = (decisions: Partial<MetricsDecisions>, overrides: Partial<NamedMetricsResponse> = {}) =>
+    agentChainFixture({ decisions: { ...heldDecisionsFixture(), ...decisions }, ...overrides });
+
+  it('n’apparaissent pas sans Statut de relais, même avec des Décisions : la condition est celle des onglets de la page', () => {
+    const text = build(metricsFixture({ decisions: heldDecisionsFixture() }));
+    expect(text).not.toContain('## Décisions');
+    expect(text).not.toContain('Feu vert');
+    expect(text).not.toContain('Coût d’attention');
+  });
+
+  it('avec les Statuts de relais, suivent la Chaîne d’agents : Décisions tenues par sens, Livraisons prouvées, Coût d’attention, Livraisons sans Feu vert', () => {
+    const text = build(agentChainFixture());
+    expect(text).toContain(
+      [
+        '_Attente humaine : médiane et P85 des 6 Livraisons qui ont attendu votre validation ; 12,9 % du Cycle Time cumulé de la période._',
+        '',
+        '## Décisions',
+        '',
+        '### Décisions tenues',
+        '',
+        '7 sur 8 Feux verts et Refus, 87,5 %',
+        '',
+        '- Feux verts : 6 (66,7 %), 5 tenus',
+        '- Relances : 1 (11,1 %)',
+        '- Refus : 2 (22,2 %), 2 tenus',
+        '- Reports : 0 (0 %)',
+        '',
+        '_Provisoire : la période court, et ses Décisions n’ont pas toutes eu le temps d’être démenties._',
+        '',
+        '### Livraisons prouvées',
+        '',
+        '66,7 % (4 sur 6 prouvées). Le plus souvent, il manque : Intention écrite.',
+        '',
+        '### Coût d’attention',
+        '',
+        'Décisions par Livraison passée par la chaîne : 1,5 (9 Décisions pour 6 Livraisons)',
+        '',
+        '### Livraisons sans Feu vert (1 Livraison)',
+        '',
+        '- `bdesk-b7q` Le graphique du Débit se décale après minuit (beads-desktop) : Livrée le 28 oct.',
+        '',
+        '## Tendance longue (12 semaines)',
+      ].join('\n'),
+    );
+  });
+
+  it('en Vue globale, chaque Livraison sans Feu vert nomme son Projet, son titre échappé, livrée le jour de l’utilisateur', () => {
+    const base = heldDecisionsFixture().evidencedDeliveries;
+    const text = build(
+      decided({
+        evidencedDeliveries: {
+          ...base,
+          // 23:30Z le 27 octobre : le 28 à Paris, en heure d'hiver.
+          withoutGreenLight: [...base.withoutGreenLight, { id: 'mpm-x2', title: 'Export *csv* | v2', type: 'task', priority: 2, project: 'mpm', deliveredAt: '2026-10-27T23:30:00.000Z' }],
+        },
+      }),
+    );
+    expect(text).toContain(
+      '### Livraisons sans Feu vert (2 Livraisons)\n\n' +
+        '- `bdesk-b7q` Le graphique du Débit se décale après minuit (beads-desktop) : Livrée le 28 oct.\n' +
+        '- `mpm-x2` Export \\*csv\\* \\| v2 (Mon-Pommier-Malin) : Livrée le 28 oct.',
+    );
+  });
+
+  it('dans un seul Projet, la liste ne nomme pas le Projet', () => {
+    const text = build(agentChainFixture({ projects: [{ id: 'bdesk', name: 'beads-desktop' }] }));
+    expect(text).toContain('- `bdesk-b7q` Le graphique du Débit se décale après minuit : Livrée le 28 oct.');
+  });
+
+  it('liste vide : la phrase de la page, selon qu’une Livraison est passée par la chaîne ou non', () => {
+    const base = heldDecisionsFixture().evidencedDeliveries;
+    const allGreen = build(decided({ evidencedDeliveries: { ...base, missing: { ...base.missing, greenLight: 0 }, withoutGreenLight: [] } }));
+    expect(allGreen).toContain('### Livraisons sans Feu vert (0 Livraison)\n\nToutes les Livraisons passées par la chaîne ont reçu votre Feu vert sur la période.');
+    expect(allGreen).not.toContain('bdesk-b7q');
+  });
+
+  it('avec les Statuts de relais mais sans Décision ni Livraison passée par la chaîne : ce qui manque, dit en toutes lettres, et pas de Chaîne d’agents', () => {
+    const text = build(metricsFixture({ handoff: ['awaiting_human'] }));
+    expect(text).not.toContain('## Chaîne d’agents');
+    expect(text).toContain(
+      [
+        '## Décisions',
+        '',
+        '### Décisions tenues',
+        '',
+        'Aucune Décision sur la période.',
+        '',
+        '### Livraisons prouvées',
+        '',
+        'Aucune Livraison passée par la chaîne sur la période.',
+        '',
+        '### Coût d’attention',
+        '',
+        'Aucune Livraison passée par la chaîne sur la période.',
+        '',
+        '### Livraisons sans Feu vert (0 Livraison)',
+        '',
+        'Aucune Livraison passée par la chaîne sur la période.',
+        '',
+        '## Tendance longue',
+      ].join('\n'),
+    );
+  });
+
+  it('accorde au singulier et à zéro : « 1 tenu », « 0 tenu », « 1 sur 1 prouvée », « 1 Décision pour 1 Livraison »', () => {
+    const text = build(
+      decided({
+        total: 2,
+        greenLights: { total: 1, held: 1, contradicted: 0 },
+        rejections: { total: 1, held: 0, contradicted: 1 },
+        reruns: 0,
+        postponements: 0,
+        provisional: false,
+        attentionCost: { deliveries: 1, decisions: 1, perDelivery: 1 },
+        evidencedDeliveries: {
+          deliveries: 1,
+          evidenced: 1,
+          share: 1,
+          missing: { writtenIntent: 0, reviewRound: 0, integration: 0, greenLight: 0 },
+          mostMissing: null,
+          withoutGreenLight: [],
+        },
+      }),
+    );
+    expect(text).toContain('### Décisions tenues\n\n1 sur 2 Feux verts et Refus, 50 %\n\n- Feux verts : 1 (50 %), 1 tenu\n- Relances : 0 (0 %)\n- Refus : 1 (50 %), 0 tenu\n- Reports : 0 (0 %)\n\n###');
+    expect(text).toContain('### Livraisons prouvées\n\n100 % (1 sur 1 prouvée). Aucune preuve ne manque.');
+    expect(text).toContain('### Coût d’attention\n\nDécisions par Livraison passée par la chaîne : 1 (1 Décision pour 1 Livraison)');
+  });
+
+  it('sans Feu vert ni Refus, les autres sens se comptent, et rien n’est provisoire : rien ne peut être démenti', () => {
+    const text = build(decided({ total: 1, greenLights: { total: 0, held: 0, contradicted: 0 }, rejections: { total: 0, held: 0, contradicted: 0 }, reruns: 1, postponements: 0 }));
+    expect(text).toContain('### Décisions tenues\n\nAucun Feu vert ni Refus sur la période.\n\n- Feux verts : 0 (0 %), 0 tenu\n- Relances : 1 (100 %)\n- Refus : 0 (0 %), 0 tenu');
+    expect(text).not.toContain('_Provisoire : la période court');
+  });
+});
+
 describe('échappement', () => {
   it('neutralise la mise en forme et les fins de ligne d’un texte venu des données', () => {
     expect(escapeMarkdown('Fix *a* | [b](c) <d> `e` #1\nsuite')).toBe('Fix \\*a\\* \\| \\[b\\](c) \\<d\\> \\`e\\` \\#1 suite');
@@ -280,5 +524,46 @@ describe('en anglais', () => {
     expect(quiet).toContain('## Current Signals (1 Signal, as of Nov 2 at 20:00)');
     expect(plain(evolution(trendOf(12, 9), MEASURES.en.count))).toBe('+3 (+33%), better');
     expect(evolution(trendOf(4, 4), MEASURES.en.count)).toBe('steady');
+  });
+
+  it('le Débit sain et les Décisions (bdesk-3e9.8), sous leurs noms anglais', () => {
+    const base = heldDecisionsFixture();
+    const untitled = { id: 'mpm-u1', title: '   ', type: 'task', priority: 2, project: 'mpm', deliveredAt: '2026-10-28T08:00:00.000Z' };
+    const text = english(
+      agentChainFixture({ decisions: { ...base, evidencedDeliveries: { ...base.evidencedDeliveries, withoutGreenLight: [...base.evidencedDeliveries.withoutGreenLight, untitled] } } }),
+    );
+    expect(text).toContain('| Throughput | 18 Deliveries | 28 | −10 (−36%), worse |\n| Sound throughput | 14 of 18 Deliveries, not significant, provisional | 22 | −8 (−36%), worse |');
+    expect(text).toContain('_Sound throughput not significant: Coverage too low: 19% of bugs have a recorded origin (minimum 50%)._');
+    expect(text).toContain('_Sound throughput provisional: Deliveries may still come back._');
+    expect(text).toContain(
+      [
+        '## Decisions',
+        '',
+        '### Held decisions',
+        '',
+        '7 of 8 Green lights and Rejections, 87.5%',
+        '',
+        '- Green lights: 6 (66.7%), 5 held',
+        '- Reruns: 1 (11.1%)',
+        '- Rejections: 2 (22.2%), 2 held',
+        '- Postponements: 0 (0%)',
+        '',
+        '_Provisional: the period is still running, and its Decisions have not all had time to be contradicted._',
+        '',
+        '### Evidenced deliveries',
+        '',
+        '66.7% (4 of 6 evidenced). Most often missing: Written intent.',
+        '',
+        '### Attention cost',
+        '',
+        'Decisions per Delivery through the chain: 1.5 (9 Decisions for 6 Deliveries)',
+        '',
+        '### Deliveries without green light (2 Deliveries)',
+        '',
+        '- `bdesk-b7q` Le graphique du Débit se décale après minuit (beads-desktop): Delivered on Oct 28',
+        // Un ticket sans titre se nomme dans la langue du rapport.
+        '- `mpm-u1` Untitled (Mon-Pommier-Malin): Delivered on Oct 28',
+      ].join('\n'),
+    );
   });
 });

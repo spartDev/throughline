@@ -29,7 +29,7 @@ import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
 import { DecisionsTab } from './DecisionsTab';
 import { MetricsTabs } from './MetricsTabs';
-import { parseMetricsParams, withDimension, withPeriod, withTab, type Dimension, type MetricsTab, type PeriodChoice, type Scope } from './params';
+import { hasTabs, parseMetricsParams, withDimension, withPeriod, withTab, type Dimension, type MetricsTab, type PeriodChoice, type Scope } from './params';
 import { ReadyAgePanel } from './ReadyAgeChart';
 import { CopyRetrospectiveButton, RetrospectivePreview, useRetrospective } from './RetrospectiveReport';
 import { ReworkPanel } from './ReworkPanel';
@@ -45,12 +45,6 @@ import './metrics.css';
 
 /** Ce que la page mesure : un Projet, ou tous (Vue globale). */
 export type MetricsScope = { kind: 'global' } | { kind: 'project'; project: { id: string; name: string } };
-
-/**
- * La page a ses onglets (bdesk-3e9.7) quand un Projet de la vue a les Statuts de relais, déclarés ou portés, quelle que soit la période. Sans eux, la page est
- * celle d'avant : le Flux seul, et `?tab=` n'y règle rien.
- */
-const hasTabs = (data: MetricsResponse): boolean => data.handoff.length > 0;
 
 /** Aujourd'hui (AAAA-MM-JJ) dans ce fuseau. */
 const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString(), timeZone);
